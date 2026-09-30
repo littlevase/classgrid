@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --primary: #1B4D3E;
+    --primary-container: #D5E5D7;
+    --on-primary: #FFFFFF;
+    --surface: #F8F9FA;
+    --surface-container: #FFFFFF;
+    --surface-variant: #EFEBE2;
+    --outline: #DAD3C3;
+  }
+
+  .dark {
+    --primary: #4E9670;
+    --primary-container: #1D3123;
+    --on-primary: #0E1B14;
+    --surface: #121212;
+    --surface-container: #1E1E1E;
+    --surface-variant: #2A261F;
+    --outline: #3A3527;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    overscroll-behavior-y: contain;
+  }
+
+  input, textarea, select {
+    user-select: auto;
+  }
+}
+
+/* Safe area padding for Android gesture navigation and notches */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Clean scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 113, 108, 0.45);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Print Rules */
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm;
+  }
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+  .no-print, header, nav, #topAppBar, #bottomNavBar, #fabContainer, #toastContainer {
+    display: none !important;
+  }
+  #printArea {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+  .print-sheet {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+  .print-sheet:last-child {
+    page-break-after: auto;
+  }
+}
