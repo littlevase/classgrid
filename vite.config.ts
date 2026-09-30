@@ -14,7 +14,7 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
-          id: '/',
+          id: '/classgrid/',
           name: 'ClassGrid — Universal School Timetable',
           short_name: 'ClassGrid',
           description: 'A native Android-feeling timetable app with fast scheduling, conflict detection, smart substitution, and multi-format exports.',
@@ -22,23 +22,23 @@ export default defineConfig(() => {
           background_color: '#F8F9FA',
           display: 'standalone',
           orientation: 'any',
-          start_url: '/',
-          scope: '/',
+          start_url: '/classgrid/',
+          scope: '/classgrid/',
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/classgrid/pwa-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/classgrid/pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/classgrid/pwa-maskable-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
