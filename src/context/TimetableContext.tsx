@@ -456,6 +456,17 @@ export const TimetableProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               subj = `${sub1}/${sub2}`;
             }
           }
+        } else {
+          // parallel or no slot2 — the common case.
+          if (t1 === teacher) {
+            hit = true;
+            subj = c[3][periodIndex] || "—";
+          }
+          if (s2 && s2.teacher === teacher) {
+            const sub2 = s2.subject || "—";
+            if (hit) subj = `${subj}/${sub2}`;
+            else { hit = true; subj = sub2; }
+          }
         }
 
         if (hit) {
