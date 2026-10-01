@@ -214,7 +214,7 @@ export const ViewTimetablesView: React.FC = () => {
               <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800 sticky top-0 z-20">
                 <tr>
                   <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 sticky left-0 bg-stone-100 dark:bg-stone-800 z-30 min-w-[110px]">Class</th>
-                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 sticky left-[110px] bg-stone-100 dark:bg-stone-800 z-30 min-w-[120px]">Incharge</th>
+                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 min-w-[120px]">Incharge</th>
                   {data.periods.map(p => (
                     <th key={p} className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 text-center">
                       Period {p}
@@ -226,7 +226,7 @@ export const ViewTimetablesView: React.FC = () => {
                 {data.classes.map((c, ci) => (
                   <tr key={c[0]} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/30">
                     <td className="py-2.5 px-3 font-bold text-stone-900 dark:text-stone-100 sticky left-0 bg-white dark:bg-stone-900 z-10 min-w-[110px]">{c[0]}</td>
-                    <td className="py-2.5 px-3 text-stone-500 sticky left-[110px] bg-white dark:bg-stone-900 z-10 min-w-[120px]">{c[1] || "—"}</td>
+                    <td className="py-2.5 px-3 text-stone-500 min-w-[120px]">{c[1] || "—"}</td>
                     {data.periods.map((_, pi) => {
                       const sub = c[3][pi] || "—";
                       const tea = c[4][pi];
