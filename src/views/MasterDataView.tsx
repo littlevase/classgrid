@@ -206,7 +206,36 @@ export const MasterDataView: React.FC = () => {
             });
             const nextInfo = { ...prev.teacherInfo };
             delete nextInfo[name];
-            return { ...prev, teachers: nextTeachers, classes: nextClasses, teacherInfo: nextInfo };
+
+            // Clean leaves
+            const nextLeaves: Record<string, string[]> = {};
+            Object.keys(prev.teacherLeaves || {}).forEach(d => {
+              const filtered = (prev.teacherLeaves[d] || []).filter(t => t !== name);
+              if (filtered.length) nextLeaves[d] = filtered;
+            });
+
+            // Clean long leaves
+            const nextLongLeaves = (prev.longLeaves || []).filter(ll => ll.teacher !== name);
+
+            // Clean conflict exceptions
+            const nextExceptions = (prev.conflictExceptions || []).filter(ex => ex.teacher !== name);
+
+            // Clean persisted absent teacher
+            try {
+              if (localStorage.getItem('utAbsentTeacher') === name) {
+                localStorage.removeItem('utAbsentTeacher');
+              }
+            } catch {}
+
+            return {
+              ...prev,
+              teachers: nextTeachers,
+              classes: nextClasses,
+              teacherInfo: nextInfo,
+              teacherLeaves: nextLeaves,
+              longLeaves: nextLongLeaves,
+              conflictExceptions: nextExceptions
+            };
           });
           resetForm();
         }

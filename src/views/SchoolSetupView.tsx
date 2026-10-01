@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTimetable, TimetableIssue } from '../context/TimetableContext';
 import { ConfirmModal, ConfirmDialogOptions } from '../components/ConfirmModal';
 import { ActiveTab } from '../types/timetable';
+import { uiConfirm } from '../utils/uiConfirm';
 import { DAY_NAMES } from '../types/timetable';
 import {
   Settings,
@@ -51,7 +52,7 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
   const [assemblyEnd, setAssemblyEnd] = useState(data.assemblyTime?.end || "");
 
   const [fridayEnabled, setFridayEnabled] = useState(data.fridayTimings?.enabled || false);
-  const [fridayDayIdx, setFridayDayIdx] = useState(data.fridayTimings?.dayIndex || 4);
+  const [fridayDayIdx, setFridayDayIdx] = useState(data.fridayTimings?.dayIndex ?? 4);
   const [fridayBreakAfter, setFridayBreakAfter] = useState(data.fridayTimings?.breakAfter || 0);
   const [fridayBreakLabel, setFridayBreakLabel] = useState(data.fridayTimings?.breakLabel || "JUMMA BREAK");
   const [fridayNote, setFridayNote] = useState(data.fridayTimings?.note || "");
@@ -116,51 +117,71 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
     options: { message: "" }
   });
 
-  const handleSaveGeneralSetup = () => {
-    updateData(prev => {
-      let nextPeriods = [...prev.periods];
-      if (periodCount !== prev.periods.length) {
-        nextPeriods = Array.from({ length: periodCount }, (_, i) => i + 1);
+    const handleSaveGeneralSetup = async () => {
+      // Confirm destructive changes
+      if (periodCount < data.periods.length) {
+        const ok = await uiConfirm(`Reducing to ${periodCount} periods will remove data in the removed slots.\n\nContinue?`,
+          { title: 'Reduce periods', yesText: 'Yes, reduce', danger: true, icon: '⚠️' });
+        if (!ok) return;
+      }
+      if (daysPerWeek < data.daysPerWeek) {
+        const ok = await uiConfirm(`Reducing to ${daysPerWeek} days will drop rotation day-masks beyond that range.\n\nContinue?`,
+          { title: 'Reduce days', yesText: 'Yes, reduce', danger: true, icon: '⚠️' });
+        if (!ok) return;
       }
 
-      const nextDays = DAY_NAMES.slice(0, daysPerWeek);
-      const nextClasses = prev.classes.map(c => {
-        const subs = [...c[3]];
-        const teas = [...c[4]];
-        const s2s = c[5] ? [...c[5]] : prev.periods.map(() => null);
+      updateData(prev => {
+        let nextPeriods = [...prev.periods];
+        if (periodCount !== prev.periods.length) {
+          nextPeriods = Array.from({ length: periodCount }, (_, i) => i + 1);
+        }
+        const nextDays = DAY_NAMES.slice(0, daysPerWeek);
 
-        while (subs.length < periodCount) subs.push("");
-        while (teas.length < periodCount) teas.push("");
-        while (s2s.length < periodCount) s2s.push(null);
+        const nextClasses = prev.classes.map(c => {
+          const subs = [...c[3]];
+          const teas = [...c[4]];
+          const s2s = c[5] ? [...c[5]] : prev.periods.map(() => null);
+          while (subs.length < periodCount) subs.push('');
+          while (teas.length < periodCount) teas.push('');
+          while (s2s.length < periodCount) s2s.push(null);
+          const trimmedS2 = s2s.slice(0, periodCount).map(s => {
+            if (!s) return null;
+            const days = (s.days || []).filter(d => d < daysPerWeek);
+            return { ...s, days };
+          });
+          return [c[0], c[1], c[2], subs.slice(0, periodCount), teas.slice(0, periodCount), trimmedS2] as typeof c;
+        });
 
-        return [
-          c[0],
-          c[1],
-          c[2],
-          subs.slice(0, periodCount),
-          teas.slice(0, periodCount),
-          s2s.slice(0, periodCount)
-        ] as typeof c;
+        const nextPeriodTimes = [...prev.periodTimes];
+        while (nextPeriodTimes.length < periodCount) nextPeriodTimes.push({ start: '', end: '' });
+
+        const nextFridayTimes = [...(prev.fridayTimings?.periodTimes || [])];
+        while (nextFridayTimes.length < periodCount) nextFridayTimes.push({ start: '', end: '' });
+
+        const clampedBreakAfter = breakAfter > periodCount ? 0 : breakAfter;
+
+        return {
+          ...prev,
+          schoolName: schoolName.trim(),
+          academicYear: academicYear.trim(),
+          printNote: printNote.trim(),
+          periods: nextPeriods,
+          daysPerWeek,
+          days: nextDays,
+          breakAfter: clampedBreakAfter,
+          classes: nextClasses,
+          periodTimes: nextPeriodTimes.slice(0, periodCount),
+          conflictExceptions: (prev.conflictExceptions || [])
+            .map(ex => ({ ...ex, days: ex.days.filter(d => d < daysPerWeek) }))
+            .filter(ex => ex.days.length > 0),
+          fridayTimings: {
+            ...prev.fridayTimings,
+            periodTimes: nextFridayTimes.slice(0, periodCount)
+          }
+        };
       });
 
-      const nextPeriodTimes = [...prev.periodTimes];
-      while (nextPeriodTimes.length < periodCount) nextPeriodTimes.push({ start: "", end: "" });
-
-      return {
-        ...prev,
-        schoolName: schoolName.trim(),
-        academicYear: academicYear.trim(),
-        printNote: printNote.trim(),
-        periods: nextPeriods,
-        daysPerWeek,
-        days: nextDays,
-        breakAfter,
-        classes: nextClasses,
-        periodTimes: nextPeriodTimes.slice(0, periodCount)
-      };
-    });
-
-    alert("School setup saved successfully.");
+      alert('School setup saved successfully.');
   };
 
   const handleSaveTimings = () => {
@@ -894,7 +915,70 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div>
+              <div className="text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-2">
+                Period times for this day
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {data.periods.map((p, idx) => {
+                  const pt = (data.fridayTimings.periodTimes && data.fridayTimings.periodTimes[idx]) || { start: '', end: '' };
+                  return (
+                    <div key={p} className="p-2 bg-stone-50 dark:bg-stone-950/60 rounded-xl border border-stone-200 dark:border-stone-800">
+                      <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-400 block mb-1">Period {p}</span>
+                      <input
+                        type="text"
+                        value={pt.start || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateData(prev => {
+                            const next = [...(prev.fridayTimings.periodTimes || [])];
+                            while (next.length < prev.periods.length) next.push({ start: '', end: '' });
+                            next[idx] = { ...next[idx], start: val };
+                            return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
+                          }, true);
+                        }}
+                        placeholder="Start"
+                        className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md mb-1"
+                      />
+                      <input
+                        type="text"
+                        value={pt.end || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateData(prev => {
+                            const next = [...(prev.fridayTimings.periodTimes || [])];
+                            while (next.length < prev.periods.length) next.push({ start: '', end: '' });
+                            next[idx] = { ...next[idx], end: val };
+                            return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
+                          }, true);
+                        }}
+                        placeholder="End"
+                        className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  updateData(prev => ({
+                    ...prev,
+                    fridayTimings: {
+                      ...prev.fridayTimings,
+                      periodTimes: (prev.periodTimes || []).map(t => ({ start: t.start, end: t.end })),
+                      assemblyTime: { ...prev.assemblyTime }
+                    }
+                  }));
+                  alert('Weekday times copied to Friday. Edit only the periods that differ.');
+                }}
+                className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-xl text-xs font-bold transition"
+              >
+                Copy weekday times → Friday
+              </button>
               <button
                 type="button"
                 onClick={handleSaveFridayTimings}

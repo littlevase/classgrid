@@ -3,6 +3,7 @@ import { useTimetable } from '../context/TimetableContext';
 import { createTimetableCanvas, shareOrDownloadCanvas } from '../utils/canvasExport';
 import { triggerPrint } from '../utils/printUtils';
 import { DAY_NAMES } from '../types/timetable';
+import { dateKey } from '../utils/dates';
 import { Clock, Printer, Download, Share2 } from 'lucide-react';
 
 export const FreeStaffView: React.FC = () => {
@@ -15,7 +16,7 @@ export const FreeStaffView: React.FC = () => {
     getTeacherTotalPeriods
   } = useTimetable();
 
-  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayKey = dateKey();
   const dayIdx = useMemo(() => {
     try {
       const [y, m, d] = todayKey.split("-").map(Number);

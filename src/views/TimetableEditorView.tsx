@@ -18,9 +18,10 @@ import {
 
 interface TimetableEditorViewProps {
   initialJump?: { period?: number; teacher?: string };
+  onJumpHandled?: () => void;
 }
 
-export const TimetableEditorView: React.FC<TimetableEditorViewProps> = ({ initialJump }) => {
+export const TimetableEditorView: React.FC<TimetableEditorViewProps> = ({ initialJump, onJumpHandled }) => {
   const {
     data,
     updateData,
@@ -65,38 +66,45 @@ export const TimetableEditorView: React.FC<TimetableEditorViewProps> = ({ initia
   const conflicts = useMemo(() => computeConflicts(), [computeConflicts]);
   const currentClass = data.classes[selectedClassIdx] || data.classes[0];
 
+  const currentClassName = currentClass?.[0] ?? '';
+  const currentSubject = currentClass?.[3]?.[selectedPeriodIdx] ?? '';
+  const currentTeacher = currentClass?.[4]?.[selectedPeriodIdx] ?? '';
+  const currentSlot2JSON = JSON.stringify(currentClass?.[5]?.[selectedPeriodIdx] ?? null);
+
   useEffect(() => {
     if (!currentClass) return;
-    const sub = currentClass[3][selectedPeriodIdx] || "";
-    const tea = currentClass[4][selectedPeriodIdx] || "";
-    const s2 = currentClass[5] ? currentClass[5][selectedPeriodIdx] : null;
-
-    setSubjectDraft(sub);
-    setTeacherDraft(tea);
+    setSubjectDraft(currentSubject);
+    setTeacherDraft(currentTeacher);
+    const s2 = JSON.parse(currentSlot2JSON);
     setSlot2Draft(s2 ? { ...s2 } : null);
     setShow2ndSlot(!!s2);
-    setIsEditingRow(!!(sub || tea || s2));
-  }, [selectedClassIdx, selectedPeriodIdx, currentClass]);
+    setIsEditingRow(!!(currentSubject || currentTeacher || s2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClassIdx, selectedPeriodIdx, currentClassName, currentSubject, currentTeacher, currentSlot2JSON]);
 
   const jumpTargetRef = useRef<HTMLDivElement>(null);
+  const dataClassesRef = useRef(data.classes);
+  dataClassesRef.current = data.classes;
+
   useEffect(() => {
-    if (initialJump && initialJump.period !== undefined && initialJump.teacher) {
-      const p = initialJump.period;
-      const t = initialJump.teacher;
-      const ci = data.classes.findIndex(c => {
-        if (c[4][p] === t) return true;
-        const s2 = c[5] ? c[5][p] : null;
-        return s2 && s2.teacher === t;
-      });
-      if (ci >= 0) {
-        setSelectedClassIdx(ci);
-        setSelectedPeriodIdx(p);
-        setTimeout(() => {
-          jumpTargetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 200);
-      }
+    if (!initialJump || initialJump.period === undefined || !initialJump.teacher) return;
+    const p = initialJump.period;
+    const t = initialJump.teacher;
+    const classes = dataClassesRef.current;
+    const ci = classes.findIndex(c => {
+      if (c[4][p] === t) return true;
+      const s2 = c[5] ? c[5][p] : null;
+      return s2 && s2.teacher === t;
+    });
+    if (ci >= 0) {
+      setSelectedClassIdx(ci);
+      setSelectedPeriodIdx(p);
+      setTimeout(() => {
+        jumpTargetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 200);
     }
-  }, [initialJump, data.classes]);
+    onJumpHandled?.();
+  }, [initialJump, onJumpHandled]);
 
   if (!data.classes.length) {
     return (
@@ -121,7 +129,8 @@ export const TimetableEditorView: React.FC<TimetableEditorViewProps> = ({ initia
     if (show2ndSlot && slot2Draft && slot2Draft.subject) {
       const mode = slot2Draft.mode || 'parallel';
       let days = (slot2Draft.days || []).slice();
-      if ((mode === 'rotation' || mode === 'same') && days.length === 0) days = [0];
+      if (mode === 'rotation' && days.length === 0) days = [data.daysPerWeek - 1];
+      if (mode === 'same') days = [];  // empty = every day
       if (mode === 'parallel') days = [];
       const tea = mode === 'same' ? teacherDraft.trim() : (slot2Draft.teacher || "").trim();
 

@@ -51,7 +51,13 @@ const AppContent: React.FC = () => {
       const target = e.target as HTMLElement;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return;
-      }
+      }      if (e.key === 'Escape') {
+               const fs = document.getElementById('fullscreenModal');
+               if (fs && fs.classList.contains('show')) { fs.classList.remove('show'); return; }
+               const more = document.getElementById('moreSheet');
+               if (more && more.classList.contains('show')) { more.classList.remove('show'); return; }
+               return;
+             }
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
 
@@ -79,7 +85,12 @@ const AppContent: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 pb-24 lg:pb-12">
         <ErrorBoundary>
           {activeTab === 'dashboard' && <DashboardView onNavigate={handleSelectTab} />}
-          {activeTab === 'editor' && <TimetableEditorView initialJump={editorJump} />}
+          {activeTab === 'editor' && (
+            <TimetableEditorView
+              initialJump={editorJump}
+              onJumpHandled={() => setEditorJump(undefined)}
+            />
+          )}
           {activeTab === 'views' && <ViewTimetablesView />}
           {activeTab === 'substitute' && <SubstituteView />}
           {activeTab === 'freestaff' && <FreeStaffView />}

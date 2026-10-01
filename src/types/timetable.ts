@@ -110,7 +110,7 @@ export const VIEW_SIZES: Record<string, { mult: number; label: string }> = {
   xl: { mult: 1.45, label: "Extra Large" },
 };
 
-export const DEFAULT_TIMETABLE_DATA: TimetableData = {
+export const DEMO_TIMETABLE_DATA: TimetableData = {
   schoolName: "Government High School",
   academicYear: "2026-2027",
   printNote: "Principal: M. Jalees",
@@ -252,3 +252,49 @@ export type ActiveTab =
   | 'freestaff'
   | 'roster'
   | 'printing';
+export const EMPTY_TIMETABLE_DATA: TimetableData = {
+  schoolName: "",
+  academicYear: "",
+  printNote: "",
+  wholeTitle: "Whole School Timetable",
+  allTeachersTitle: "All Teachers Timetable",
+  periods: [1, 2, 3, 4, 5, 6, 7, 8],
+  breakAfter: 0,
+  days: DAY_NAMES.slice(0, 5),
+  daysPerWeek: 5,
+  classes: [],
+  teachers: [],
+  subjects: [],
+  teacherInfo: {},
+  teacherLeaves: {},
+  leaveDate: "",
+  longLeaves: [],
+  conflictExceptions: [],
+  periodTimes: [1, 2, 3, 4, 5, 6, 7, 8].map(() => ({ start: "", end: "" })),
+  fridayTimings: {
+    enabled: false,
+    dayIndex: 4,
+    assemblyTime: { start: "", end: "" },
+    periodTimes: [1, 2, 3, 4, 5, 6, 7, 8].map(() => ({ start: "", end: "" })),
+    breakAfter: 0,
+    breakLabel: "JUMMA BREAK",
+    note: "",
+    combined: true
+  },
+  schoolTimingsTitle: "SCHOOL TIMINGS",
+  effectiveFromDate: "",
+  assemblyTime: { start: "", end: "" },
+  showTimingsSignature: false,
+  autoChainTimes: true,
+  freeStaffIncludeNonTeaching: false,
+  substituteIncludeNonTeaching: false,
+  substituteRecommendWorkload: true,
+  substituteRecommendGroup: true,
+  hideEmptyTeachersInTT: false,
+  printSize: 'm',
+  printOrientation: 'landscape',
+  stripSize: 'm',
+  viewSize: 'm',
+  schoolLogo: "",
+  signatureEnabled: false
+};

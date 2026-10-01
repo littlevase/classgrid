@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTimetable } from '../context/TimetableContext';
 import { ActiveTab } from '../types/timetable';
+import { dateKey } from '../utils/dates';
 import {
   Users,
   Calendar,
@@ -27,7 +28,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     getLongLeavesForDate
   } = useTimetable();
 
-  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [todayKey, setTodayKey] = React.useState(() => dateKey());
+  React.useEffect(() => {
+    const onVis = () => setTodayKey(dateKey());
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
   const todayLeaves = useMemo(() => getLeavesForDate(todayKey), [getLeavesForDate, todayKey]);
   const issues = useMemo(() => collectTimetableIssues(), [collectTimetableIssues]);
 
@@ -58,7 +64,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <p className="text-xs sm:text-sm text-stone-500 font-medium mt-0.5">
               {data.academicYear ? `Academic Year ${data.academicYear}` : "Academic Timetable"}
               {data.printNote ? ` · ${data.printNote}` : ""}
-            </p>
+            </p>            <p className="text-[11px] text-stone-400 mt-1">
+                              {(() => {
+                                const t = Number(localStorage.getItem('utLastSaved') || 0);
+                                if (!t) return 'No changes saved yet.';
+                                const diff = Date.now() - t;
+                                const m = Math.floor(diff / 60000);
+                                if (m < 1) return 'Saved just now';
+                                if (m < 60) return `Saved ${m} minute${m === 1 ? '' : 's'} ago`;
+                                const h = Math.floor(m / 60);
+                                if (h < 24) return `Saved ${h} hour${h === 1 ? '' : 's'} ago`;
+                                const d = Math.floor(h / 24);
+                                return `Saved ${d} day${d === 1 ? '' : 's'} ago`;
+                              })()}
+                            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -73,7 +92,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </div>
       </div>
-
+      {localStorage.getItem('utHideGS') !== '1' && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 rounded-2xl p-4 relative">
+          <button
+            onClick={() => { localStorage.setItem('utHideGS', '1'); window.location.reload(); }}
+            className="absolute top-2 right-3 text-stone-500 hover:text-stone-800 dark:hover:text-stone-200 text-lg leading-none"
+            title="Dismiss"
+          >×</button>
+          <h3 className="text-sm font-bold text-emerald-900 dark:text-emerald-200 mb-2">👋 Welcome — Quick Start</h3>
+          <ol className="text-xs space-y-1 list-decimal pl-5 text-emerald-900 dark:text-emerald-200">
+            <li>Set school name, periods, days, and break in <b>School Setup</b>.</li>
+            <li>Add teachers, subjects, and classes in <b>Master Data</b>.</li>
+            <li>Assign subjects and teachers in the <b>Timetable Editor</b>.</li>
+            <li>Preview every format in <b>View Timetables</b>.</li>
+            <li>Print or export from <b>Print &amp; Export</b>.</li>
+          </ol>
+        </div>
+      )}
       {/* Key Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-stone-200 dark:border-stone-800">
@@ -101,7 +136,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           <div className="text-xs font-bold text-stone-600 dark:text-stone-400 mt-1 flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" /> Periods / Day
           </div>
-        </div>
+        </div>        <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-stone-200 dark:border-stone-800">
+                        <div className="text-2xl sm:text-3xl font-black text-emerald-800 dark:text-emerald-400 tabular-nums">
+                          {data.subjects.length}
+                        </div>
+                        <div className="text-xs font-bold text-stone-600 dark:text-stone-400 mt-1 flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5" /> Subjects
+                        </div>
+                      </div>
 
         <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-stone-200 dark:border-stone-800">
           <div className="text-2xl sm:text-3xl font-black text-emerald-800 dark:text-emerald-400 tabular-nums">

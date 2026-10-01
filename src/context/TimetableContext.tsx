@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   TimetableData,
-  DEFAULT_TIMETABLE_DATA,
+  EMPTY_TIMETABLE_DATA,
   Slot2,
   ConflictException,
   LongLeave,
@@ -62,7 +62,7 @@ const SCENARIOS_KEY = 'utScenarios';
 const MAX_HISTORY = 30;
 
 function normalize(raw: Partial<TimetableData>): TimetableData {
-  const base = { ...DEFAULT_TIMETABLE_DATA, ...raw };
+  const base = { ...EMPTY_TIMETABLE_DATA, ...raw };
   base.daysPerWeek = Math.max(1, Math.min(7, Math.floor(base.daysPerWeek || 5)));
   base.days = DAY_NAMES.slice(0, base.daysPerWeek);
 
@@ -115,8 +115,15 @@ export const TimetableProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     } catch (e) {
       console.warn("Could not load stored timetable:", e);
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) localStorage.setItem('utCorruptBackup', raw);
+        setTimeout(() => {
+          alert('Your saved data was corrupted and has been backed up to "utCorruptBackup" in localStorage. Starting fresh.');
+        }, 500);
+      } catch {}
     }
-    return DEFAULT_TIMETABLE_DATA;
+    return EMPTY_TIMETABLE_DATA;
   });
 
   const [historyStack, setHistoryStack] = useState<string[]>([]);
@@ -261,9 +268,10 @@ export const TimetableProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
 
         if (s2 && s2.mode === 'same') {
-          // Single teacher teaches combined subject — count once
+          // Same-teacher mode: teacher may teach on listed days only
           const combinedTeacher = t1 || s2.teacher;
-          if (combinedTeacher === teacher) { n++; continue; }
+          const activeOnDay = !s2.days || s2.days.length === 0 || s2.days.includes(dayIndex);
+          if (activeOnDay && combinedTeacher === teacher) { n++; continue; }
           continue;
         }
 
@@ -626,7 +634,7 @@ export const TimetableProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const resetEverything = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SCENARIOS_KEY);
-    setData(DEFAULT_TIMETABLE_DATA);
+    setData(EMPTY_TIMETABLE_DATA);
     setHistoryStack([]);
     setRedoStack([]);
   }, []);

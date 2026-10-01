@@ -3,6 +3,7 @@ import { useTimetable } from '../context/TimetableContext';
 import { LongLeave, DAY_NAMES } from '../types/timetable';
 import { createTimetableCanvas, shareOrDownloadCanvas } from '../utils/canvasExport';
 import { triggerPrint } from '../utils/printUtils';
+import { dateKey } from '../utils/dates';
 import {
   UserCheck,
   Calendar,
@@ -29,7 +30,7 @@ export const SubstituteView: React.FC = () => {
   } = useTimetable();
 
   const [leaveDate, setLeaveDate] = useState<string>(
-    data.leaveDate || new Date().toISOString().slice(0, 10)
+    data.leaveDate || dateKey()
   );
   const [absentTeacher, setAbsentTeacher] = useState<string>(
     localStorage.getItem("utAbsentTeacher") || data.teachers[0] || ""
@@ -40,7 +41,7 @@ export const SubstituteView: React.FC = () => {
 
   // Long leave form inputs
   const [llTeacher, setLlTeacher] = useState<string>(data.teachers[0] || "");
-  const [llFrom, setLlFrom] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [llFrom, setLlFrom] = useState<string>(dateKey());
   const [llTo, setLlTo] = useState<string>("");
   const [llReason, setLlReason] = useState<string>("");
 
@@ -155,7 +156,7 @@ export const SubstituteView: React.FC = () => {
         info: assignments.join(", "),
         isFree: false,
         bestWorkload: best ? `${best.teacher} (${best.score} loads)` : "No free teacher",
-        groupMatches: rankedByGroup.slice(0, 3),
+        groupMatches: rankedByGroup.slice(0, 4),
         freeTeachers: rankedByWorkload.map(x => `${x.teacher} (${x.score})`)
       };
     });
@@ -176,7 +177,10 @@ export const SubstituteView: React.FC = () => {
     if (!llTeacher || !llFrom) {
       alert("Please select teacher and from date.");
       return;
-    }
+    }    if (llTo && llFrom > llTo) {
+           alert("From date must be before To date.");
+           return;
+         }
 
     updateData(prev => {
       let nextLong = [...(prev.longLeaves || [])];
@@ -283,7 +287,7 @@ export const SubstituteView: React.FC = () => {
         getLeavesForDate
       });
 
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = dateKey();
       const safeName = (absentTeacher || "absent").replace(/\s+/g, "-");
       const fileName = `ClassGrid-Substitute-${safeName}-${stamp}.png`;
       const title = `Substitute Board — ${absentTeacher}`;
@@ -385,7 +389,29 @@ export const SubstituteView: React.FC = () => {
             </select>
           </div>
         </div>
-
+        <div className="mt-4 space-y-2 border-t border-stone-200 dark:border-stone-800 pt-4">
+          <label className="flex items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
+            <input type="checkbox"
+              checked={data.substituteRecommendWorkload}
+              onChange={(e) => updateData(prev => ({ ...prev, substituteRecommendWorkload: e.target.checked }))}
+              className="rounded text-emerald-800 focus:ring-emerald-700" />
+            <span>Recommend by workload (lowest total load first)</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
+            <input type="checkbox"
+              checked={data.substituteRecommendGroup}
+              onChange={(e) => updateData(prev => ({ ...prev, substituteRecommendGroup: e.target.checked }))}
+              className="rounded text-emerald-800 focus:ring-emerald-700" />
+            <span>Recommend by group &amp; grade match</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
+            <input type="checkbox"
+              checked={data.substituteIncludeNonTeaching}
+              onChange={(e) => updateData(prev => ({ ...prev, substituteIncludeNonTeaching: e.target.checked }))}
+              className="rounded text-emerald-800 focus:ring-emerald-700" />
+            <span>Include non-teaching staff (Principal, Head, etc.)</span>
+          </label>
+        </div>
         {!isDayInWeek && (
           <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-medium">
             This date falls on a weekend or non-instructional day ({DAY_NAMES[dayIdx] || "Outside calendar"}).
@@ -412,7 +438,7 @@ export const SubstituteView: React.FC = () => {
               <tr>
                 <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-36">Period</th>
                 <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-48">Recommended (Workload)</th>
-                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-52">By Group (1–3 Match)</th>
+                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-52">By Group (1–4 Match)</th>
                 <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300">Free Staff (Available)</th>
               </tr>
             </thead>
@@ -625,9 +651,23 @@ export const SubstituteView: React.FC = () => {
 
       {/* Short Leaves (Single Day) Checkboxes */}
       <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 border border-stone-200 dark:border-stone-800 shadow-xs">
-        <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 mb-1">
-          Single-Day Short Leaves on {leaveDate}
-        </h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100">
+            Single-Day Short Leaves on {leaveDate}
+          </h3>
+          {onLeaveAll.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirm('Clear all short leaves for this date?')) return;
+                setLeavesForDate(leaveDate, []);
+              }}
+              className="text-xs font-bold text-rose-600 hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
         <p className="text-xs text-stone-500 mb-3">
           Check teachers who are absent today. Teachers on long leave are locked.
         </p>

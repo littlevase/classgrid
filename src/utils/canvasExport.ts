@@ -315,7 +315,397 @@ export async function createTimetableCanvas(
   }
 
   // 3. Teacher Timetable
+    if (kind !== "teacher") throw new Error(`PNG export not implemented for "${kind}"`);
   const t = options.selectedTeacher || data.teachers[0];
+    // 3. All Teachers
+    if (kind === "allteachers") {
+      const teacherList = data.hideEmptyTeachersInTT
+        ? data.teachers.filter(t => options.teacherTotalPeriods(t) > 0)
+        : data.teachers;
+      const n = data.periods.length;
+      const pad = 30, headerH = 140, headRowH = 50, rowH = 66;
+      const teacherW = 150, periodW = 118;
+      const tableW = teacherW + periodW * n;
+      const totalW = pad * 2 + tableW;
+      const totalH = pad * 2 + headerH + headRowH + teacherList.length * rowH;
+      const canvas = document.createElement("canvas");
+      canvas.width = totalW * scale; canvas.height = totalH * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, totalW, totalH);
+      ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      drawPageHeader(ctx, totalW, pad, headerH, data.allTeachersTitle || "All Teachers Timetable");
+      let y = pad + headerH, x = pad;
+      ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, y, tableW, headRowH);
+      ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, teacherW, headRowH); ctx.fillStyle = "#1B4D3E";
+      ctx.font = `700 13px ${F}`; ctx.fillText("Teacher", x + teacherW / 2, y + headRowH / 2);
+      x += teacherW;
+      data.periods.forEach(p => {
+        ctx.strokeRect(x, y, periodW, headRowH);
+        ctx.fillText(`Period ${p}`, x + periodW / 2, y + headRowH / 2);
+        x += periodW;
+      });
+      y += headRowH;
+      teacherList.forEach((t, ti) => {
+        x = pad;
+        ctx.fillStyle = ti % 2 === 0 ? "#FFF" : "#F8F5EE";
+        ctx.fillRect(pad, y, tableW, rowH);
+        ctx.strokeStyle = "#DAD3C3"; ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, teacherW, rowH);
+        ctx.fillStyle = "#111";
+        ctx.font = `700 13px ${F}`;
+        ctx.fillText(t, x + teacherW / 2, y + rowH / 2);
+        x += teacherW;
+        data.periods.forEach((_, pi) => {
+          ctx.strokeRect(x, y, periodW, rowH);
+          ctx.fillStyle = "#111";
+          ctx.font = `700 11px ${F}`;
+          drawCentered(ctx, options.teacherPeriodSummary(t, pi), x + periodW / 2, y + rowH / 2, periodW - 8, 13);
+          x += periodW;
+        });
+        y += rowH;
+      });
+      return canvas;
+    }
+
+    // 4. Timings
+    if (kind === "timings") {
+      const title = data.schoolTimingsTitle || "SCHOOL TIMINGS";
+      const wref = data.effectiveFromDate ? `w.e.f. ${data.effectiveFromDate}` : "";
+      const buildRows = (times: any[], assembly: any, breakAfter: number, breakLabel: string) => {
+        const rows: any[] = [];
+        const calc = (s: string, e: string) => {
+          if (!s || !e) return "—";
+          const parse = (x: string) => {
+            const m = x.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+            if (!m) return null;
+            let h = parseInt(m[1], 10);
+            const min = parseInt(m[2], 10);
+            if (m[3] === "PM" && h < 12) h += 12;
+            if (m[3] === "AM" && h === 12) h = 0;
+            return h * 60 + min;
+          };
+          const ss = parse(s), ee = parse(e);
+          if (ss === null || ee === null) return "—";
+          let diff = ee - ss; if (diff < 0) diff += 24 * 60;
+          return `${diff} min`;
+        };
+        if (assembly && (assembly.start || assembly.end)) {
+          rows.push({ label: "Assembly", start: assembly.start || "—", end: assembly.end || "—", dur: calc(assembly.start, assembly.end) });
+        }
+        data.periods.forEach((p, i) => {
+          const pt = (times && times[i]) || { start: "", end: "" };
+          rows.push({ label: String(p), start: pt.start || "—", end: pt.end || "—", dur: calc(pt.start, pt.end) });
+          if (breakAfter === p && i < data.periods.length - 1) {
+            const bs = pt.end || "—";
+            const be = (times[i + 1] && times[i + 1].start) || "—";
+            rows.push({ label: breakLabel, start: bs, end: be, dur: bs !== "—" && be !== "—" ? calc(bs, be) : "—", isBreak: true });
+          }
+        });
+        return rows;
+      };
+      const sections: any[] = [
+        { subtitle: wref ? `${title} (${wref})` : title, rows: buildRows(data.periodTimes || [], data.assemblyTime, data.breakAfter, "BREAK") }
+      ];
+      if (data.fridayTimings?.enabled && data.fridayTimings.periodTimes?.some(pt => pt.start || pt.end)) {
+        const dn = data.days[data.fridayTimings.dayIndex] || "Friday";
+        sections.push({
+          subtitle: wref ? `${title} — ${dn} (${wref})` : `${title} — ${dn}`,
+          rows: buildRows(data.fridayTimings.periodTimes, data.fridayTimings.assemblyTime, data.fridayTimings.breakAfter, data.fridayTimings.breakLabel || "BREAK")
+        });
+      }
+      const pad = 30, headerH = 130, headRowH = 50, rowH = 58, gapH = 40;
+      const col1W = 200, col2W = 300, col3W = 200;
+      const tableW = col1W + col2W + col3W;
+      const totalW = pad * 2 + tableW;
+      let totalH = pad * 2;
+      sections.forEach((s, si) => {
+        totalH += headerH + headRowH + s.rows.length * rowH + (si > 0 ? gapH : 0);
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = totalW * scale; canvas.height = totalH * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, totalW, totalH);
+      ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      let y = pad;
+      sections.forEach((s, si) => {
+        if (si > 0) y += gapH;
+        drawPageHeader(ctx, totalW, pad, headerH, s.subtitle);
+        let ty = y + headerH;
+        let x = pad;
+        ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, ty, tableW, headRowH);
+        ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, ty, col1W, headRowH); ctx.fillStyle = "#1B4D3E";
+        ctx.font = `700 14px ${F}`; ctx.fillText("PERIOD", x + col1W / 2, ty + headRowH / 2); x += col1W;
+        ctx.strokeRect(x, ty, col2W, headRowH); ctx.fillText("TIME SLOT", x + col2W / 2, ty + headRowH / 2); x += col2W;
+        ctx.strokeRect(x, ty, col3W, headRowH); ctx.fillText("DURATION (MINS)", x + col3W / 2, ty + headRowH / 2);
+        ty += headRowH;
+        s.rows.forEach((r: any, idx: number) => {
+          x = pad;
+          ctx.fillStyle = r.isBreak ? "#F1F5F9" : (idx % 2 === 0 ? "#FFF" : "#F8FAFC");
+          ctx.fillRect(pad, ty, tableW, rowH);
+          ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+          ctx.strokeRect(x, ty, col1W, rowH); ctx.fillStyle = "#111";
+          ctx.font = `700 14px ${F}`;
+          ctx.fillText(r.label, x + col1W / 2, ty + rowH / 2); x += col1W;
+          ctx.strokeRect(x, ty, col2W, rowH);
+          ctx.fillText(`${r.start} - ${r.end}`, x + col2W / 2, ty + rowH / 2); x += col2W;
+          ctx.strokeRect(x, ty, col3W, rowH);
+          ctx.fillText(r.dur, x + col3W / 2, ty + rowH / 2);
+          ty += rowH;
+        });
+        y = ty;
+      });
+      return canvas;
+    }
+
+    // 5. Roster
+    if (kind === "roster") {
+      const pad = 30, headerH = 130, headRowH = 48, rowH = 46;
+      const nameW = 230, qualW = 150, rankW = 90, desigW = 150, inchargeW = 250, loadW = 110;
+      const totalW = pad * 2 + nameW + qualW + rankW + desigW + inchargeW + loadW;
+      const totalH = pad * 2 + headerH + headRowH + data.teachers.length * rowH;
+      const canvas = document.createElement("canvas");
+      canvas.width = totalW * scale; canvas.height = totalH * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, totalW, totalH);
+      ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      drawPageHeader(ctx, totalW, pad, headerH, "Teachers Roster");
+      let y = pad + headerH, x = pad;
+      const headers = ["Teacher", "Group", "Grade", "Designation", "Incharge of", "Periods/week"];
+      const widths = [nameW, qualW, rankW, desigW, inchargeW, loadW];
+      ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, y, totalW - pad * 2, headRowH);
+      ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      headers.forEach((h, i) => {
+        ctx.strokeRect(x, y, widths[i], headRowH);
+        ctx.fillStyle = "#1B4D3E"; ctx.font = `700 13px ${F}`;
+        ctx.fillText(h, x + widths[i] / 2, y + headRowH / 2); x += widths[i];
+      });
+      y += headRowH;
+      data.teachers.forEach((t, ti) => {
+        x = pad;
+        ctx.fillStyle = ti % 2 === 0 ? "#FFF" : "#F8FAFC";
+        ctx.fillRect(pad, y, totalW - pad * 2, rowH);
+        const info = data.teacherInfo[t] || { qual: "", rank: "", desig: "" };
+        const incharge = data.classes.filter(c => c[1] === t).map(c => c[0]).join(", ");
+        const cells = [t, info.qual || "—", info.rank || "—", info.desig || "—", incharge || "—", String(options.teacherTotalPeriods(t))];
+        cells.forEach((v, i) => {
+          ctx.strokeRect(x, y, widths[i], rowH);
+          ctx.fillStyle = "#111"; ctx.font = `700 12px ${F}`;
+          drawCentered(ctx, v, x + widths[i] / 2, y + rowH / 2, widths[i] - 10, 14);
+          x += widths[i];
+        });
+        y += rowH;
+      });
+      return canvas;
+    }
+
+    // 6. Free Staff
+    if (kind === "freestaff") {
+      const today = new Date();
+      const dayIdxMap: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
+      const todayIdx = dayIdxMap[today.getDay()] ?? -1;
+      const onLeave = new Set(options.getLeavesForDate(`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`));
+      const pad = 30, headerH = 130, headRowH = 48, rowH = 60;
+      const periodW = 200, freeW = 850;
+      const totalW = pad * 2 + periodW + freeW;
+      const totalH = pad * 2 + headerH + headRowH + data.periods.length * rowH;
+      const canvas = document.createElement("canvas");
+      canvas.width = totalW * scale; canvas.height = totalH * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, totalW, totalH);
+      ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      drawPageHeader(ctx, totalW, pad, headerH, "Free Staff — by Period");
+      let y = pad + headerH, x = pad;
+      ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, y, totalW - pad * 2, headRowH);
+      ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, periodW, headRowH); ctx.fillStyle = "#1B4D3E";
+      ctx.font = `700 13px ${F}`; ctx.fillText("Period", x + periodW / 2, y + headRowH / 2); x += periodW;
+      ctx.strokeRect(x, y, freeW, headRowH); ctx.fillText("Free Teachers", x + freeW / 2, y + headRowH / 2);
+      y += headRowH;
+      data.periods.forEach((p, pi) => {
+        x = pad;
+        ctx.fillStyle = "#FFF"; ctx.fillRect(pad, y, totalW - pad * 2, rowH);
+        ctx.strokeRect(x, y, periodW, rowH); ctx.fillStyle = "#111";
+        ctx.font = `700 13px ${F}`; ctx.fillText(`Period ${p}`, x + periodW / 2, y + rowH / 2); x += periodW;
+        ctx.strokeRect(x, y, freeW, rowH);
+        let text = "All teachers busy";
+        if (todayIdx >= 0 && todayIdx < data.daysPerWeek) {
+          const free = data.teachers.filter(t => {
+            if (onLeave.has(t)) return false;
+            if (!data.freeStaffIncludeNonTeaching && options.teacherTotalPeriods(t) === 0) return false;
+            return !data.classes.some(c => {
+              const t1 = c[4][pi];
+              const s2 = c[5] ? c[5][pi] : null;
+              let s1Active = true;
+              if (s2 && s2.mode === 'rotation' && s2.days.includes(todayIdx)) s1Active = false;
+              if (t1 === t && s1Active) return true;
+              if (s2 && s2.teacher === t && s2.mode !== 'same') {
+                return s2.mode === 'parallel' || s2.days.includes(todayIdx);
+              }
+              return false;
+            });
+          });
+          if (free.length) text = free.map(t => `${t} (${options.teacherTotalPeriods(t)})`).join(", ");
+        }
+        ctx.fillStyle = "#111"; ctx.font = `700 12px ${F}`;
+        drawLeft(ctx, text, x + 14, y + rowH / 2, freeW - 28, 14);
+        y += rowH;
+      });
+      return canvas;
+    }
+
+    // 7. Substitute Board
+    if (kind === "substitute") {
+      const absent = options.absentTeacher || data.teachers[0] || "";
+      const leaveDate = data.leaveDate || new Date().toISOString().slice(0, 10);
+      const dayIdxMap: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
+      let dayIdx = -1;
+      try {
+        const [y0, m0, d0] = leaveDate.split("-").map(Number);
+        dayIdx = dayIdxMap[new Date(y0, m0 - 1, d0).getDay()] ?? -1;
+      } catch {}
+      const onLeave = new Set(options.getLeavesForDate(leaveDate));
+      const isDayInWeek = dayIdx >= 0 && dayIdx < data.daysPerWeek;
+
+      const pad = 30, headerH = 150, headRowH = 50, rowH = 64;
+      const periodW = 200, recW = 220, groupW = 260, freeW = 500;
+      const totalW = pad * 2 + periodW + recW + groupW + freeW;
+      const totalH = pad * 2 + headerH + headRowH + data.periods.length * rowH;
+      const canvas = document.createElement("canvas");
+      canvas.width = totalW * scale; canvas.height = totalH * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, totalW, totalH);
+      ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      drawPageHeader(ctx, totalW, pad, headerH, `Substitute Board — Absent: ${absent} · ${leaveDate}`);
+
+      let y = pad + headerH, x = pad;
+      ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, y, totalW - pad * 2, headRowH);
+      ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+      const headers = ["Period", "Recommended", "By Group (1–4)", "Free teachers (workload)"];
+      const widths = [periodW, recW, groupW, freeW];
+      headers.forEach((h, i) => {
+        ctx.strokeRect(x, y, widths[i], headRowH);
+        ctx.fillStyle = "#1B4D3E"; ctx.font = `700 12px ${F}`;
+        ctx.fillText(h, x + widths[i] / 2, y + headRowH / 2); x += widths[i];
+      });
+      y += headRowH;
+
+      const prior: Record<string, number> = {};
+      data.periods.forEach((p, pi) => {
+        const assignments: string[] = [];
+        if (isDayInWeek) {
+          data.classes.forEach(c => {
+            const t1 = c[4][pi];
+            const s2 = c[5] ? c[5][pi] : null;
+            let s1Active = true;
+            if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) s1Active = false;
+            if (t1 === absent && s1Active) assignments.push(`${c[3][pi] || "—"} (${c[0]})`);
+            else if (s2 && s2.teacher === absent && s2.mode !== 'same') {
+              const active = s2.mode === 'parallel' || s2.days.includes(dayIdx);
+              if (active) assignments.push(`${s2.subject || "—"} (${c[0]})`);
+            }
+          });
+        }
+        x = pad;
+        ctx.fillStyle = "#FFF"; ctx.fillRect(pad, y, totalW - pad * 2, rowH);
+        ctx.strokeStyle = "#DAD3C3";
+        ctx.strokeRect(x, y, periodW, rowH);
+        ctx.fillStyle = "#111"; ctx.font = `700 13px ${F}`;
+        if (assignments.length) {
+          ctx.fillText(`P${p}`, x + periodW / 2, y + rowH / 2 - 9);
+          ctx.font = `600 11px ${F}`; ctx.fillStyle = "#555";
+          drawCentered(ctx, assignments.join(", "), x + periodW / 2, y + rowH / 2 + 10, periodW - 10, 12);
+        } else {
+          ctx.fillText(`P${p}`, x + periodW / 2, y + rowH / 2);
+        }
+        x += periodW;
+
+        ctx.strokeRect(x, y, recW, rowH);
+        if (!assignments.length) {
+          ctx.fillStyle = "#888"; ctx.font = `600 12px ${F}`;
+          ctx.fillText("No cover needed", x + recW / 2, y + rowH / 2);
+        } else {
+          const free = data.teachers.filter(t => {
+            if (t === absent) return false;
+            if (onLeave.has(t)) return false;
+            if (!data.substituteIncludeNonTeaching && options.teacherTotalPeriods(t) === 0) return false;
+            return !data.classes.some(c => {
+              const t1 = c[4][pi];
+              const s2 = c[5] ? c[5][pi] : null;
+              let s1Active = true;
+              if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) s1Active = false;
+              if (t1 === t && s1Active) return true;
+              if (s2 && s2.teacher === t && s2.mode !== 'same') {
+                return s2.mode === 'parallel' || s2.days.includes(dayIdx);
+              }
+              return false;
+            });
+          });
+          const ranked = free.map(t => ({ t, s: options.teacherTotalPeriods(t) + (prior[t] || 0) }))
+            .sort((a, b) => a.s - b.s || a.t.localeCompare(b.t));
+          const best = ranked[0];
+          if (best) prior[best.t] = (prior[best.t] || 0) + 1;
+          ctx.fillStyle = "#111"; ctx.font = `700 12px ${F}`;
+          drawCentered(ctx, best ? `${best.t} (${best.s})` : "None", x + recW / 2, y + rowH / 2, recW - 10, 13);
+        }
+        x += recW;
+
+        ctx.strokeRect(x, y, groupW, rowH);
+        ctx.fillStyle = "#111"; ctx.font = `600 11px ${F}`;
+        if (!assignments.length) {
+          ctx.fillText("—", x + groupW / 2, y + rowH / 2);
+        } else {
+          const free = data.teachers.filter(t => t !== absent && !onLeave.has(t) &&
+            !data.classes.some(c => {
+              const t1 = c[4][pi]; const s2 = c[5] ? c[5][pi] : null;
+              let active = true;
+              if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) active = false;
+              if (t1 === t && active) return true;
+              if (s2 && s2.teacher === t && s2.mode !== 'same') return s2.mode === 'parallel' || s2.days.includes(dayIdx);
+              return false;
+            }));
+          const absInfo = data.teacherInfo[absent] || { qual: "", rank: "" };
+          const scored = free.map(t => {
+            const inf = data.teacherInfo[t] || { qual: "", rank: "" };
+            const tier = (absInfo.rank === inf.rank && absInfo.qual === inf.qual) ? 0
+              : (absInfo.rank === inf.rank) ? 1
+              : (absInfo.qual === inf.qual) ? 2 : 3;
+            return { t, tier, inf };
+          }).sort((a, b) => a.tier - b.tier).slice(0, 4);
+          const lines = scored.map((s, i) => `${i + 1}. ${s.t} (${[s.inf.rank, s.inf.qual].filter(Boolean).join(" ")})`).join("  ·  ");
+          drawLeft(ctx, lines || "—", x + 10, y + rowH / 2, groupW - 20, 13);
+        }
+        x += groupW;
+
+        ctx.strokeRect(x, y, freeW, rowH);
+        ctx.fillStyle = "#111"; ctx.font = `600 11px ${F}`;
+        if (!assignments.length) {
+          drawLeft(ctx, "Absent teacher is free", x + 12, y + rowH / 2, freeW - 24, 13);
+        } else {
+          const free = data.teachers.filter(t => t !== absent && !onLeave.has(t) &&
+            !data.classes.some(c => {
+              const t1 = c[4][pi]; const s2 = c[5] ? c[5][pi] : null;
+              let active = true;
+              if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) active = false;
+              if (t1 === t && active) return true;
+              if (s2 && s2.teacher === t && s2.mode !== 'same') return s2.mode === 'parallel' || s2.days.includes(dayIdx);
+              return false;
+            }));
+          const ranked = free.map(t => `${t} (${options.teacherTotalPeriods(t)})`).join(", ");
+          drawLeft(ctx, ranked || "No teachers free", x + 12, y + rowH / 2, freeW - 24, 13);
+        }
+        y += rowH;
+      });
+      return canvas;
+    }
+
+    // 8. Teacher timetable (fallback for unknown kinds)
   const inchargeClass = data.classes.find(c => c[1] === t);
   const info = (data.teacherInfo && data.teacherInfo[t]) || { qual: "", rank: "", desig: "" };
   const subParts = [
