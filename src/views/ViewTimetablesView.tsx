@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTimetable } from '../context/TimetableContext';
 import { createTimetableCanvas, shareOrDownloadCanvas } from '../utils/canvasExport';
-import { DAY_NAMES, VIEW_SIZES } from '../types/timetable';
+import { DAY_NAMES } from '../types/timetable';
 import {
   Download,
   Share2,
@@ -155,18 +155,6 @@ export const ViewTimetablesView: React.FC = () => {
             </label>
           )}
 
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-stone-500">Size:</label>
-            <select
-              value={data.viewSize}
-              onChange={(e) => updateData(prev => ({ ...prev, viewSize: e.target.value as any }))}
-              className="px-2.5 py-1 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-bold text-stone-800 dark:text-stone-200"
-            >
-              {Object.keys(VIEW_SIZES).map(k => (
-                <option key={k} value={k}>{VIEW_SIZES[k].label}</option>
-              ))}
-            </select>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
