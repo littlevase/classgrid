@@ -488,7 +488,7 @@ export const ViewTimetablesView: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-white dark:bg-stone-950 p-4 sm:p-8 overflow-y-auto flex flex-col">
           <div className="flex justify-between items-center pb-4 border-b border-stone-200 dark:border-stone-800 mb-6">
             <h2 className="text-lg font-bold text-stone-900 dark:text-stone-100">
-              Fullscreen View — {data.schoolName}
+              Fullscreen — {data.schoolName}
             </h2>
             <button
               type="button"
@@ -499,6 +499,8 @@ export const ViewTimetablesView: React.FC = () => {
             </button>
           </div>
           <div className="flex-1">
+
+            {/* 1. Whole School */}
             {activeSection === 'whole' && (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm border-collapse">
@@ -527,6 +529,129 @@ export const ViewTimetablesView: React.FC = () => {
                 </table>
               </div>
             )}
+
+            {/* 2. All Teachers */}
+            {activeSection === 'allteachers' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead className="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                      <th className="py-3 px-4 font-bold">Teacher</th>
+                      {data.periods.map(p => (
+                        <th key={p} className="py-3 px-4 font-bold text-center">Period {p}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
+                    {(data.hideEmptyTeachersInTT
+                      ? data.teachers.filter(t => getTeacherTotalPeriods(t) > 0)
+                      : data.teachers
+                    ).map(t => (
+                      <tr key={t}>
+                        <td className="py-3 px-4 font-bold">{t}</td>
+                        {data.periods.map((_, pi) => (
+                          <td key={pi} className="py-3 px-2 text-center">
+                            {teacherPeriodSummary(t, pi)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 3. School Timings */}
+            {activeSection === 'timings' && (
+              <div className="max-w-3xl mx-auto space-y-6">
+                <table className="w-full text-center text-sm border-collapse border border-stone-200 dark:border-stone-800">
+                  <thead className="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                      <th className="py-3 px-4 font-bold">PERIOD</th>
+                      <th className="py-3 px-4 font-bold">TIME SLOT</th>
+                      <th className="py-3 px-4 font-bold">DURATION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
+                    {data.assemblyTime && (data.assemblyTime.start || data.assemblyTime.end) && (
+                      <tr>
+                        <td className="py-3 px-4 font-bold">Assembly</td>
+                        <td className="py-3 px-4">{data.assemblyTime.start} - {data.assemblyTime.end}</td>
+                        <td className="py-3 px-4">{calculateDuration(data.assemblyTime.start, data.assemblyTime.end)}</td>
+                      </tr>
+                    )}
+                    {data.periods.map((p, i) => (
+                      <tr key={p}>
+                        <td className="py-3 px-4 font-bold">{p}</td>
+                        <td className="py-3 px-4">{data.periodTimes[i]?.start || "—"} - {data.periodTimes[i]?.end || "—"}</td>
+                        <td className="py-3 px-4">{calculateDuration(data.periodTimes[i]?.start || "", data.periodTimes[i]?.end || "")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 4. Class Wise */}
+            {activeSection === 'class' && currentClass && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead className="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                      <th className="py-3 px-4 font-bold w-24">Day</th>
+                      {data.periods.map(p => (
+                        <th key={p} className="py-3 px-4 font-bold text-center">Period {p}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
+                    {data.days.map((day, dayIdx) => (
+                      <tr key={day}>
+                        <td className="py-3 px-4 font-bold">{day}</td>
+                        {data.periods.map((_, pi) => {
+                          const s2 = currentClass[5] ? currentClass[5][pi] : null;
+                          const t1 = currentClass[4][pi];
+                          const sub1 = currentClass[3][pi] || "—";
+                          let line = t1 ? `${sub1} - ${t1}` : sub1;
+                          if (s2 && (s2.subject || s2.teacher)) {
+                            if (s2.mode === 'same') {
+                              const t = t1 || s2.teacher;
+                              line = t ? `${sub1}/${s2.subject || "—"} - ${t}` : `${sub1}/${s2.subject || "—"}`;
+                            } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
+                              line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
+                            }
+                          }
+                          return <td key={pi} className="py-3 px-2 text-center">{line}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 5. Teacher Wise */}
+            {activeSection === 'teacher' && (
+              <div className="max-w-2xl mx-auto">
+                <table className="w-full text-left text-sm border-collapse border border-stone-200 dark:border-stone-800">
+                  <thead className="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                      <th className="py-3 px-4 font-bold w-1/3">Period</th>
+                      <th className="py-3 px-4 font-bold">Assignment</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
+                    {data.periods.map((p, pi) => (
+                      <tr key={p}>
+                        <td className="py-3 px-4 font-bold">Period {p}</td>
+                        <td className="py-3 px-4">{teacherPeriodSummary(currentTeacher, pi)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
           </div>
         </div>
       )}
