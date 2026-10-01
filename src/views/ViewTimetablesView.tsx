@@ -209,12 +209,12 @@ export const ViewTimetablesView: React.FC = () => {
         </div>
 
         {activeSection === 'whole' && (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh] border border-stone-200 dark:border-stone-800 rounded-2xl">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
+              <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800 sticky top-0 z-20">
                 <tr>
-                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200">Class</th>
-                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200">Incharge</th>
+                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 sticky left-0 bg-stone-100 dark:bg-stone-800 z-30 min-w-[110px]">Class</th>
+                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 sticky left-[110px] bg-stone-100 dark:bg-stone-800 z-30 min-w-[120px]">Incharge</th>
                   {data.periods.map(p => (
                     <th key={p} className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 text-center">
                       Period {p}
@@ -225,8 +225,8 @@ export const ViewTimetablesView: React.FC = () => {
               <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
                 {data.classes.map((c, ci) => (
                   <tr key={c[0]} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/30">
-                    <td className="py-2.5 px-3 font-bold text-stone-900 dark:text-stone-100">{c[0]}</td>
-                    <td className="py-2.5 px-3 text-stone-500">{c[1] || "—"}</td>
+                    <td className="py-2.5 px-3 font-bold text-stone-900 dark:text-stone-100 sticky left-0 bg-white dark:bg-stone-900 z-10 min-w-[110px]">{c[0]}</td>
+                    <td className="py-2.5 px-3 text-stone-500 sticky left-[110px] bg-white dark:bg-stone-900 z-10 min-w-[120px]">{c[1] || "—"}</td>
                     {data.periods.map((_, pi) => {
                       const sub = c[3][pi] || "—";
                       const tea = c[4][pi];
@@ -262,11 +262,11 @@ export const ViewTimetablesView: React.FC = () => {
         )}
 
         {activeSection === 'allteachers' && (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh] border border-stone-200 dark:border-stone-800 rounded-2xl">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
+              <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800 sticky top-0 z-20">
                 <tr>
-                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200">Teacher</th>
+                  <th className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 sticky left-0 bg-stone-100 dark:bg-stone-800 z-30 min-w-[130px]">Teacher</th>
                   {data.periods.map(p => (
                     <th key={p} className="py-2.5 px-3 font-bold text-stone-800 dark:text-stone-200 text-center">
                       Period {p}
@@ -280,7 +280,7 @@ export const ViewTimetablesView: React.FC = () => {
                   : data.teachers
                 ).map(t => (
                   <tr key={t} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/30">
-                    <td className="py-2.5 px-3 font-bold text-stone-900 dark:text-stone-100">{t}</td>
+                    <td className="py-2.5 px-3 font-bold text-stone-900 dark:text-stone-100 sticky left-0 bg-white dark:bg-stone-900 z-10 min-w-[130px]">{t}</td>
                     {data.periods.map((_, pi) => (
                       <td key={pi} className="py-2.5 px-2 text-center font-medium text-stone-700 dark:text-stone-300">
                         {teacherPeriodSummary(t, pi)}
@@ -402,11 +402,11 @@ export const ViewTimetablesView: React.FC = () => {
         )}
 
         {activeSection === 'class' && currentClass && (
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh] border border-stone-200 dark:border-stone-800 rounded-2xl">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
+              <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800 sticky top-0 z-20">
                 <tr>
-                  <th className="py-3 px-3 font-bold text-stone-800 dark:text-stone-200 w-24">Day</th>
+                  <th className="py-3 px-3 font-bold text-stone-800 dark:text-stone-200 w-24 sticky left-0 bg-stone-100 dark:bg-stone-800 z-30 min-w-[90px]">Day</th>
                   {data.periods.map(p => (
                     <th key={p} className="py-3 px-3 font-bold text-stone-800 dark:text-stone-200 text-center">
                       Period {p}
@@ -417,7 +417,7 @@ export const ViewTimetablesView: React.FC = () => {
               <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
                 {data.days.map((day, dayIdx) => (
                   <tr key={day} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/30">
-                    <td className="py-3 px-3 font-bold text-stone-900 dark:text-stone-100">{day}</td>
+                    <td className="py-3 px-3 font-bold text-stone-900 dark:text-stone-100 sticky left-0 bg-white dark:bg-stone-900 z-10 min-w-[90px]">{day}</td>
                     {data.periods.map((_, pi) => {
                       const s2 = currentClass[5] ? currentClass[5][pi] : null;
                       const t1 = currentClass[4][pi];
