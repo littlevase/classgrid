@@ -112,18 +112,7 @@ export const ViewTimetablesView: React.FC = () => {
       </div>
 
       <div className="bg-white dark:bg-stone-900 rounded-2xl p-4 border border-stone-200 dark:border-stone-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => handleExportImage(false)}
-            disabled={isExporting}
-            className="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 active:scale-95"
-            title="Download PNG image"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Save Image</span>
-          </button>
-
+        <div className="flex items-center gap-3">
           {activeSection === 'class' && (
             <div className="flex items-center gap-2">
               <label className="text-xs font-bold text-stone-500">Class:</label>
@@ -165,9 +154,21 @@ export const ViewTimetablesView: React.FC = () => {
               <span>Hide empty teachers</span>
             </label>
           )}
+
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleExportImage(false)}
+            disabled={isExporting}
+            className="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1.5 active:scale-95"
+            title="Download PNG image"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Save Image</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleExportImage(true)}
