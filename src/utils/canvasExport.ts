@@ -314,9 +314,7 @@ export async function createTimetableCanvas(
     return canvas;
   }
 
-  // 3. Teacher Timetable
-    if (kind !== "teacher") throw new Error(`PNG export not implemented for "${kind}"`);
-  const t = options.selectedTeacher || data.teachers[0];
+
     // 3. All Teachers
     if (kind === "allteachers") {
       const teacherList = data.hideEmptyTeachersInTT
@@ -705,7 +703,9 @@ export async function createTimetableCanvas(
       return canvas;
     }
 
-    // 8. Teacher timetable (fallback for unknown kinds)
+    // 8. Teacher timetable (final fallback)
+  if (kind !== "teacher") throw new Error(`PNG export not implemented for "${kind}"`);
+  const t = options.selectedTeacher || data.teachers[0];
   const inchargeClass = data.classes.find(c => c[1] === t);
   const info = (data.teacherInfo && data.teacherInfo[t]) || { qual: "", rank: "", desig: "" };
   const subParts = [
