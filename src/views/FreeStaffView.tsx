@@ -95,7 +95,7 @@ export const FreeStaffView: React.FC = () => {
             Free Staff — by Period (${DAY_NAMES[dayIdx] || "Today"})
           </div>
           <div style="font-size: 10pt; color: #555; margin-top: 1mm;">
-            Date: ${todayKey} · Numbers in brackets show periods taught today
+            Date: ${todayKey} · Numbers in brackets show periods taught
           </div>
         </div>
         <table style="width: 100%; border-collapse: collapse;">
@@ -194,7 +194,7 @@ export const FreeStaffView: React.FC = () => {
                   Period
                 </th>
                 <th className="py-3 px-4 font-bold text-stone-700 dark:text-stone-300">
-                  Free Teachers (Numbers in brackets show periods taught today)
+                  Free Teachers (Numbers in brackets show periods taught)
                 </th>
               </tr>
             </thead>
@@ -218,9 +218,9 @@ export const FreeStaffView: React.FC = () => {
                             className="px-2.5 py-1 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-xs font-semibold text-stone-800 dark:text-stone-200"
                           >
                             <b>{item.teacher}</b>
-                            <span className="text-emerald-700 dark:text-emerald-400 ml-1 font-bold">
-                              ({item.todayLoad} today)
-                            </span>
+                           <span className="text-emerald-700 dark:text-emerald-400 ml-1 font-bold">
+                             ({item.todayLoad})
+                           </span>
                           </span>
                         ))}
                       </div>
