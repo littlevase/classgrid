@@ -427,7 +427,13 @@ export const ViewTimetablesView: React.FC = () => {
                       if (s2 && (s2.subject || s2.teacher)) {
                         if (s2.mode === 'same') {
                           const t = t1 || s2.teacher;
-                          line = t ? `${sub1}/${s2.subject || "—"} - ${t}` : `${sub1}/${s2.subject || "—"}`;
+                          const sub2 = s2.subject || "—";
+                          const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
+                          let displaySub;
+                          if (!hasMask) displaySub = `${sub1}/${sub2}`;          // combined, every day
+                          else if (s2.days.includes(dayIdx)) displaySub = sub2;  // slot 2 on its days
+                          else displaySub = sub1;                                 // slot 1 otherwise
+                          line = t ? `${displaySub} - ${t}` : displaySub;
                         } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
                           line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
                         }
@@ -601,14 +607,20 @@ export const ViewTimetablesView: React.FC = () => {
                           const t1 = currentClass[4][pi];
                           const sub1 = currentClass[3][pi] || "—";
                           let line = t1 ? `${sub1} - ${t1}` : sub1;
-                          if (s2 && (s2.subject || s2.teacher)) {
-                            if (s2.mode === 'same') {
-                              const t = t1 || s2.teacher;
-                              line = t ? `${sub1}/${s2.subject || "—"} - ${t}` : `${sub1}/${s2.subject || "—"}`;
-                            } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
-                              line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
-                            }
-                          }
+                         if (s2 && (s2.subject || s2.teacher)) {
+                           if (s2.mode === 'same') {
+                             const t = t1 || s2.teacher;
+                             const sub2 = s2.subject || "—";
+                             const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
+                             let displaySub;
+                             if (!hasMask) displaySub = `${sub1}/${sub2}`;          // combined, every day
+                             else if (s2.days.includes(dayIdx)) displaySub = sub2;  // slot 2 on its days
+                             else displaySub = sub1;                                 // slot 1 otherwise
+                             line = t ? `${displaySub} - ${t}` : displaySub;
+                           } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
+                             line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
+                           }
+                         }
                           return <td key={pi} className="py-3 px-2 text-center">{line}</td>;
                         })}
                       </tr>

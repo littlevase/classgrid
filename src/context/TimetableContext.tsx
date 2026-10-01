@@ -268,10 +268,10 @@ export const TimetableProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
 
         if (s2 && s2.mode === 'same') {
-          // Same-teacher mode: teacher may teach on listed days only
+          // Same-teacher mode: teacher teaches every day —
+          // slot1's subject on non-listed days, slot2's subject on listed days.
           const combinedTeacher = t1 || s2.teacher;
-          const activeOnDay = !s2.days || s2.days.length === 0 || s2.days.includes(dayIndex);
-          if (activeOnDay && combinedTeacher === teacher) { n++; continue; }
+          if (combinedTeacher === teacher) n++;
           continue;
         }
 
@@ -436,24 +436,25 @@ export const TimetableProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             }
           }
         } else if (s2 && s2.mode === 'same') {
-          // Combined subject taught by the same teacher
+          // Combined subject taught by the same teacher.
+          // If specific days are set, tag the subject with those days —
+          // e.g. "Urdu/Lib (Mon)" — so it matches the Whole School view.
           const combinedTeacher = t1 || s2.teacher;
           if (combinedTeacher === teacher) {
             hit = true;
             const sub1 = c[3][periodIndex] || "—";
             const sub2 = s2.subject || "—";
-            subj = `${sub1}/${sub2}`;
-          }
-        } else {
-          // parallel or no slot2
-          if (t1 === teacher) {
-            hit = true;
-            subj = c[3][periodIndex] || "—";
-          }
-          if (s2 && s2.teacher === teacher) {
-            const sub2 = s2.subject || "—";
-            if (hit) subj = `${subj}/${sub2}`;
-            else { hit = true; subj = sub2; }
+            const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
+            if (hasMask) {
+              const dayStr = s2.days
+                .slice()
+                .sort((a, b) => a - b)
+                .map(d => (DAY_NAMES[d] || "").slice(0, 3))
+                .join(", ");
+              subj = `${sub1}/${sub2} (${dayStr})`;
+            } else {
+              subj = `${sub1}/${sub2}`;
+            }
           }
         }
 
