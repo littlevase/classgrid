@@ -82,6 +82,8 @@ const AppContent: React.FC = () => {
         activeViewTitle={TAB_TITLES[activeTab] || "Timetable"}
       />
 
+      <BottomNavBar currentTab={activeTab} onSelectTab={handleSelectTab} />
+
       <main className="flex-1 max-w-7xl w-full mx-auto p-3.5 sm:p-6 pb-24 lg:pb-12">
         <ErrorBoundary>
           {activeTab === 'dashboard' && <DashboardView onNavigate={handleSelectTab} />}
@@ -100,8 +102,6 @@ const AppContent: React.FC = () => {
           {activeTab === 'printing' && <PrintingView />}
         </ErrorBoundary>
       </main>
-
-      <BottomNavBar currentTab={activeTab} onSelectTab={handleSelectTab} />
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 
