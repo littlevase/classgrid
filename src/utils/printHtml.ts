@@ -300,3 +300,118 @@ export function freeStaffHTML(data: TimetableData, rows: { period: number; text:
     </div>
   `;
 }
+
+/* ---------- School Timings (main + optional merged/separate Friday) ---------- */
+ export function schoolTimingsHTML(data: TimetableData): string {
+   const title = data.schoolTimingsTitle || 'SCHOOL TIMINGS';
+   const wref = data.effectiveFromDate ? `w.e.f. ${data.effectiveFromDate}` : '';
+
+   const calc = (s: string, e: string): string => {
+     if (!s || !e) return '—';
+     const parse = (x: string): number | null => {
+       const m = x.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+       if (!m) return null;
+       let h = parseInt(m[1], 10);
+       const min = parseInt(m[2], 10);
+       if (m[3] === 'PM' && h < 12) h += 12;
+       if (m[3] === 'AM' && h === 12) h = 0;
+       return h * 60 + min;
+     };
+     const ss = parse(s), ee = parse(e);
+     if (ss === null || ee === null) return '—';
+     let diff = ee - ss;
+     if (diff < 0) diff += 24 * 60;
+     return `${diff} min`;
+   };
+
+   const buildRows = (
+     times: { start: string; end: string }[] | undefined,
+     assembly: { start: string; end: string } | undefined,
+     breakAfter: number,
+     breakLabel: string
+   ): string => {
+     let rows = '';
+     if (assembly && (assembly.start || assembly.end)) {
+       rows += `<tr><th>Assembly</th><td>${esc(assembly.start || '—')} - ${esc(assembly.end || '—')}</td><td>${esc(calc(assembly.start || '', assembly.end || ''))}</td></tr>`;
+     }
+     data.periods.forEach((p, i) => {
+       const pt = (times && times[i]) || { start: '', end: '' };
+       rows += `<tr><th>${esc(p)}</th><td>${esc(pt.start || '—')} - ${esc(pt.end || '—')}</td><td>${esc(calc(pt.start || '', pt.end || ''))}</td></tr>`;
+       if (breakAfter === p && i < data.periods.length - 1) {
+         const bs = pt.end || '—';
+         const be = (times && times[i + 1] && times[i + 1].start) || '—';
+         rows += `<tr><th>${esc(breakLabel)}</th><td>${esc(bs)} - ${esc(be)}</td><td>${bs !== '—' && be !== '—' ? esc(calc(bs, be)) : '—'}</td></tr>`;
+       }
+     });
+     return rows;
+   };
+
+   const head = `<tr><th style="width:20%">PERIOD</th><th style="width:40%">TIME SLOT</th><th style="width:40%">DURATION (MINS)</th></tr>`;
+
+   const ft = data.fridayTimings;
+   const fridayHasAnyData = !!(
+     ft &&
+     ((ft.assemblyTime && (ft.assemblyTime.start || ft.assemblyTime.end)) ||
+       (Array.isArray(ft.periodTimes) && ft.periodTimes.some(pt => pt && (pt.start || pt.end))))
+   );
+   const fridayDayName = ft ? (data.days[ft.dayIndex] || 'Friday') : 'Friday';
+
+   // Divider row that spans all three columns
+   const dividerRow = ft
+     ? `<tr class="day-divider"><td colspan="3" style="background:#D6D3D1;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:center;">${esc(fridayDayName)}${ft.note ? ` — ${esc(ft.note)}` : ''}</td></tr>`
+     : '';
+
+   const mainRows = buildRows(data.periodTimes || [], data.assemblyTime, data.breakAfter, 'BREAK');
+   const fridayRows = ft
+     ? buildRows(ft.periodTimes || [], ft.assemblyTime, ft.breakAfter, ft.breakLabel || 'BREAK')
+     : '';
+
+   // Modes:
+   // - No Friday data              → single sheet with just the main table
+   // - Friday data + !enabled      → single sheet, main rows + divider + Friday rows (merged)
+   // - Friday data + enabled       → two sheets (main, then Friday)
+   let html = '';
+   if (fridayHasAnyData && ft && ft.enabled) {
+     // Separate: main sheet
+     html += `
+       <div class="print-sheet fixed-sheet timings-sheet">
+         <div class="print-header">
+           <div class="print-title">${esc(data.schoolName)}</div>
+           <div class="print-sub">${esc(title)}${wref ? ' (' + esc(wref) + ')' : ''}</div>
+         </div>
+         <div class="sheet-body">
+           <table class="fill"><thead>${head}</thead><tbody>${mainRows}</tbody></table>
+         </div>
+       </div>
+     `;
+     // Separate: Friday sheet
+     html += `
+       <div class="print-sheet fixed-sheet timings-sheet">
+         <div class="print-header">
+           <div class="print-title">${esc(data.schoolName)}</div>
+           <div class="print-sub">${esc(title)} — ${esc(fridayDayName)}${wref ? ' (' + esc(wref) + ')' : ''}</div>
+         </div>
+         <div class="sheet-body">
+           <table class="fill"><thead>${head}</thead><tbody>${fridayRows}</tbody></table>
+         </div>
+       </div>
+     `;
+   } else {
+     // Merged (or no Friday data at all)
+     const mergedBody = fridayHasAnyData && ft
+       ? mainRows + dividerRow + fridayRows
+       : mainRows;
+     html = `
+       <div class="print-sheet fixed-sheet timings-sheet">
+         <div class="print-header">
+           <div class="print-title">${esc(data.schoolName)}</div>
+           <div class="print-sub">${esc(title)}${wref ? ' (' + esc(wref) + ')' : ''}</div>
+         </div>
+         <div class="sheet-body">
+           <table class="fill"><thead>${head}</thead><tbody>${mergedBody}</tbody></table>
+         </div>
+       </div>
+     `;
+   }
+   return html;
+ }

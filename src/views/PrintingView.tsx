@@ -7,7 +7,8 @@ import {
   allTeachersHTML,
   classWiseHTML,
   teacherHTML,
-  rosterHTML
+  rosterHTML,
+  schoolTimingsHTML
 } from '../utils/printHtml';
 import { PRINT_SIZES } from '../types/timetable';
 import {
@@ -59,90 +60,7 @@ export const PrintingView: React.FC = () => {
   };
 
   const handlePrintSchoolTimings = () => {
-    // Reuse the School Timings structure from the app data
-    const buildTimingsRows = (times: any[], assembly: any, breakAfter: number, breakLabel: string) => {
-      const calc = (s: string, e: string) => {
-        if (!s || !e) return '—';
-        const parse = (x: string) => {
-          const m = x.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
-          if (!m) return null;
-          let h = parseInt(m[1], 10);
-          const min = parseInt(m[2], 10);
-          if (m[3] === 'PM' && h < 12) h += 12;
-          if (m[3] === 'AM' && h === 12) h = 0;
-          return h * 60 + min;
-        };
-        const ss = parse(s), ee = parse(e);
-        if (ss === null || ee === null) return '—';
-        let diff = ee - ss;
-        if (diff < 0) diff += 24 * 60;
-        return `${diff} min`;
-      };
-      let rows = '';
-      if (assembly && (assembly.start || assembly.end)) {
-        rows += `<tr><th>Assembly</th><td>${assembly.start || '—'} - ${assembly.end || '—'}</td><td>${calc(assembly.start, assembly.end)}</td></tr>`;
-      }
-      data.periods.forEach((p, i) => {
-        const pt = (times && times[i]) || { start: '', end: '' };
-        rows += `<tr><th>${p}</th><td>${pt.start || '—'} - ${pt.end || '—'}</td><td>${calc(pt.start, pt.end)}</td></tr>`;
-        if (breakAfter === p && i < data.periods.length - 1) {
-          const bs = pt.end || '—';
-          const be = (times[i + 1] && times[i + 1].start) || '—';
-          rows += `<tr><th>${breakLabel}</th><td>${bs} - ${be}</td><td>${bs !== '—' && be !== '—' ? calc(bs, be) : '—'}</td></tr>`;
-        }
-      });
-      return rows;
-    };
-
-    const head = `
-      <tr>
-        <th style="width:20%">PERIOD</th>
-        <th style="width:40%">TIME SLOT</th>
-        <th style="width:40%">DURATION (MINS)</th>
-      </tr>
-    `;
-
-    const mainRows = buildTimingsRows(data.periodTimes || [], data.assemblyTime, data.breakAfter, 'BREAK');
-    const title = data.schoolTimingsTitle || 'SCHOOL TIMINGS';
-    const wref = data.effectiveFromDate ? `w.e.f. ${data.effectiveFromDate}` : '';
-
-    let html = `
-      <div class="print-sheet fixed-sheet timings-sheet">
-        <div class="print-header">
-          <div class="print-title">${data.schoolName}</div>
-          <div class="print-sub">${title}${wref ? ' (' + wref + ')' : ''}</div>
-        </div>
-        <div class="sheet-body">
-          <table class="fill">
-            <thead>${head}</thead>
-            <tbody>${mainRows}</tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    if (data.fridayTimings?.enabled && data.fridayTimings.periodTimes?.some(pt => pt.start || pt.end)) {
-      const dayName = data.days[data.fridayTimings.dayIndex] || 'Friday';
-      const ftRows = buildTimingsRows(
-        data.fridayTimings.periodTimes,
-        data.fridayTimings.assemblyTime,
-        data.fridayTimings.breakAfter,
-        data.fridayTimings.breakLabel || 'BREAK'
-      );
-      html += `
-        <div class="print-sheet fixed-sheet timings-sheet">
-          <div class="print-header">
-            <div class="print-title">${data.schoolName}</div>
-            <div class="print-sub">${title} — ${dayName}${wref ? ' (' + wref + ')' : ''}</div>
-          </div>
-          <div class="sheet-body">
-            <table class="fill"><thead>${head}</thead><tbody>${ftRows}</tbody></table>
-          </div>
-        </div>
-      `;
-    }
-
-    triggerPrint(html, { ...opts, orientation: 'portrait' });
+    triggerPrint(schoolTimingsHTML(data), { ...opts, orientation: 'portrait' });
   };
 
   const handlePrintTeacherGrid = () => {
