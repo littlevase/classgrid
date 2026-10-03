@@ -456,11 +456,9 @@ export async function createTimetableCanvas(
         ? buildRows(ft.periodTimes || [], ft.assemblyTime, ft.breakAfter, ft.breakLabel || "BREAK")
         : [];
 
-      // Decide layout
       const mergeMode = fridayHasAnyData && ft && !ft.enabled;
       const separateMode = fridayHasAnyData && ft && ft.enabled;
 
-      // For merge mode: insert divider row into the main rows list
       let combinedRows: Row[] = mainRows;
       if (mergeMode) {
         combinedRows = [
@@ -528,7 +526,6 @@ export async function createTimetableCanvas(
           ty += noteH;
         }
 
-        // Header row
         let x = pad;
         ctx.fillStyle = "#EFEBE2";
         ctx.fillRect(pad, ty, tableW, headRowH);
@@ -546,10 +543,8 @@ export async function createTimetableCanvas(
         ctx.fillText("DURATION (MINS)", x + col3W / 2, ty + headRowH / 2);
         ty += headRowH;
 
-        // Body rows
         s.rows.forEach((r, idx) => {
           if (r.isDivider) {
-            // Full-width divider row
             ctx.fillStyle = "#D6D3D1";
             ctx.fillRect(pad, ty, tableW, rowH);
             ctx.strokeStyle = "#000";
@@ -684,7 +679,7 @@ export async function createTimetableCanvas(
       return canvas;
     }
 
-    // 7. Substitute Board
+    // 7. Substitute Board — dynamic columns based on checkboxes
     if (kind === "substitute") {
       const absent = options.absentTeacher || data.teachers[0] || "";
       const leaveDate = data.leaveDate || new Date().toISOString().slice(0, 10);
@@ -697,9 +692,18 @@ export async function createTimetableCanvas(
       const onLeave = new Set(options.getLeavesForDate(leaveDate));
       const isDayInWeek = dayIdx >= 0 && dayIdx < data.daysPerWeek;
 
+      // Column visibility flags — match the on-screen table
+      const showWorkloadCol = data.substituteRecommendWorkload !== false;
+      const showGroupCol = data.substituteRecommendGroup !== false;
+
       const pad = 30, headerH = 150, headRowH = 50, rowH = 64;
-      const periodW = 200, recW = 220, groupW = 260, freeW = 500;
-      const totalW = pad * 2 + periodW + recW + groupW + freeW;
+      const periodW = 200;
+      const recW = showWorkloadCol ? 220 : 0;
+      const groupW = showGroupCol ? 260 : 0;
+      // Free column expands to fill remaining space
+      const totalTableW = 1200;
+      const freeW = totalTableW - periodW - recW - groupW;
+      const totalW = pad * 2 + totalTableW;
       const totalH = pad * 2 + headerH + headRowH + data.periods.length * rowH;
       const canvas = document.createElement("canvas");
       canvas.width = totalW * scale; canvas.height = totalH * scale;
@@ -709,16 +713,29 @@ export async function createTimetableCanvas(
       ctx.textBaseline = "middle"; ctx.textAlign = "center";
       drawPageHeader(ctx, totalW, pad, headerH, `Substitute Board — Absent: ${absent} · ${leaveDate}`);
 
-      let y = pad + headerH, x = pad;
-      ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, y, totalW - pad * 2, headRowH);
+      let y = pad + headerH;
+      let x = pad;
+      ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, y, totalTableW, headRowH);
       ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
-      const headers = ["Period", "Recommended", "By Group (1–4)", "Free teachers (workload)"];
-      const widths = [periodW, recW, groupW, freeW];
-      headers.forEach((h, i) => {
-        ctx.strokeRect(x, y, widths[i], headRowH);
-        ctx.fillStyle = "#1B4D3E"; ctx.font = `700 12px ${F}`;
-        ctx.fillText(h, x + widths[i] / 2, y + headRowH / 2); x += widths[i];
-      });
+      ctx.fillStyle = "#1B4D3E"; ctx.font = `700 12px ${F}`;
+
+      // Header cells — only include the columns that are enabled
+      ctx.strokeRect(x, y, periodW, headRowH);
+      ctx.fillText("Period", x + periodW / 2, y + headRowH / 2);
+      x += periodW;
+
+      if (showWorkloadCol) {
+        ctx.strokeRect(x, y, recW, headRowH);
+        ctx.fillText("Recommended", x + recW / 2, y + headRowH / 2);
+        x += recW;
+      }
+      if (showGroupCol) {
+        ctx.strokeRect(x, y, groupW, headRowH);
+        ctx.fillText("By Group (1–4)", x + groupW / 2, y + headRowH / 2);
+        x += groupW;
+      }
+      ctx.strokeRect(x, y, freeW, headRowH);
+      ctx.fillText("Free teachers (workload)", x + freeW / 2, y + headRowH / 2);
       y += headRowH;
 
       const prior: Record<string, number> = {};
@@ -737,9 +754,30 @@ export async function createTimetableCanvas(
             }
           });
         }
+
+        // Compute the free-teacher ranking once per row (used by multiple columns)
+        const free = assignments.length ? data.teachers.filter(t => {
+          if (t === absent) return false;
+          if (onLeave.has(t)) return false;
+          if (!data.substituteIncludeNonTeaching && options.teacherTotalPeriods(t) === 0) return false;
+          return !data.classes.some(c => {
+            const t1 = c[4][pi];
+            const s2 = c[5] ? c[5][pi] : null;
+            let s1Active = true;
+            if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) s1Active = false;
+            if (t1 === t && s1Active) return true;
+            if (s2 && s2.teacher === t && s2.mode !== 'same') {
+              return s2.mode === 'parallel' || s2.days.includes(dayIdx);
+            }
+            return false;
+          });
+        }) : [];
+
         x = pad;
-        ctx.fillStyle = "#FFF"; ctx.fillRect(pad, y, totalW - pad * 2, rowH);
+        ctx.fillStyle = "#FFF"; ctx.fillRect(pad, y, totalTableW, rowH);
         ctx.strokeStyle = "#DAD3C3";
+
+        // Period cell
         ctx.strokeRect(x, y, periodW, rowH);
         ctx.fillStyle = "#111"; ctx.font = `700 13px ${F}`;
         if (assignments.length) {
@@ -751,80 +789,54 @@ export async function createTimetableCanvas(
         }
         x += periodW;
 
-        ctx.strokeRect(x, y, recW, rowH);
-        if (!assignments.length) {
-          ctx.fillStyle = "#888"; ctx.font = `600 12px ${F}`;
-          ctx.fillText("No cover needed", x + recW / 2, y + rowH / 2);
-        } else {
-          const free = data.teachers.filter(t => {
-            if (t === absent) return false;
-            if (onLeave.has(t)) return false;
-            if (!data.substituteIncludeNonTeaching && options.teacherTotalPeriods(t) === 0) return false;
-            return !data.classes.some(c => {
-              const t1 = c[4][pi];
-              const s2 = c[5] ? c[5][pi] : null;
-              let s1Active = true;
-              if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) s1Active = false;
-              if (t1 === t && s1Active) return true;
-              if (s2 && s2.teacher === t && s2.mode !== 'same') {
-                return s2.mode === 'parallel' || s2.days.includes(dayIdx);
-              }
-              return false;
-            });
-          });
-          const ranked = free.map(t => ({ t, s: options.teacherTotalPeriods(t) + (prior[t] || 0) }))
-            .sort((a, b) => a.s - b.s || a.t.localeCompare(b.t));
-          const best = ranked[0];
-          if (best) prior[best.t] = (prior[best.t] || 0) + 1;
-          ctx.fillStyle = "#111"; ctx.font = `700 12px ${F}`;
-          drawCentered(ctx, best ? `${best.t} (${best.s})` : "None", x + recW / 2, y + rowH / 2, recW - 10, 13);
+        // Recommended cell (only if enabled)
+        if (showWorkloadCol) {
+          ctx.strokeRect(x, y, recW, rowH);
+          if (!assignments.length) {
+            ctx.fillStyle = "#888"; ctx.font = `600 12px ${F}`;
+            ctx.fillText("No cover needed", x + recW / 2, y + rowH / 2);
+          } else {
+            const ranked = free.map(t => ({ t, s: options.teacherTotalPeriods(t) + (prior[t] || 0) }))
+              .sort((a, b) => a.s - b.s || a.t.localeCompare(b.t));
+            const best = ranked[0];
+            if (best) prior[best.t] = (prior[best.t] || 0) + 1;
+            ctx.fillStyle = "#111"; ctx.font = `700 12px ${F}`;
+            drawCentered(ctx, best ? `${best.t} (${best.s})` : "None", x + recW / 2, y + rowH / 2, recW - 10, 13);
+          }
+          x += recW;
         }
-        x += recW;
 
-        ctx.strokeRect(x, y, groupW, rowH);
-        ctx.fillStyle = "#111"; ctx.font = `600 11px ${F}`;
-        if (!assignments.length) {
-          ctx.fillText("—", x + groupW / 2, y + rowH / 2);
-        } else {
-          const free = data.teachers.filter(t => t !== absent && !onLeave.has(t) &&
-            !data.classes.some(c => {
-              const t1 = c[4][pi]; const s2 = c[5] ? c[5][pi] : null;
-              let active = true;
-              if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) active = false;
-              if (t1 === t && active) return true;
-              if (s2 && s2.teacher === t && s2.mode !== 'same') return s2.mode === 'parallel' || s2.days.includes(dayIdx);
-              return false;
-            }));
-          const absInfo = data.teacherInfo[absent] || { qual: "", rank: "" };
-          const scored = free.map(t => {
-            const inf = data.teacherInfo[t] || { qual: "", rank: "" };
-            const tier = (absInfo.rank === inf.rank && absInfo.qual === inf.qual) ? 0
-              : (absInfo.rank === inf.rank) ? 1
-              : (absInfo.qual === inf.qual) ? 2 : 3;
-            return { t, tier, inf };
-          }).sort((a, b) => a.tier - b.tier).slice(0, 4);
-          const lines = scored.map((s, i) => `${i + 1}. ${s.t} (${[s.inf.rank, s.inf.qual].filter(Boolean).join(" ")})`).join("  ·  ");
-          drawLeft(ctx, lines || "—", x + 10, y + rowH / 2, groupW - 20, 13);
+        // By Group cell (only if enabled)
+        if (showGroupCol) {
+          ctx.strokeRect(x, y, groupW, rowH);
+          ctx.fillStyle = "#111"; ctx.font = `600 11px ${F}`;
+          if (!assignments.length) {
+            ctx.fillText("—", x + groupW / 2, y + rowH / 2);
+          } else {
+            const absInfo = data.teacherInfo[absent] || { qual: "", rank: "" };
+            const scored = free.map(t => {
+              const inf = data.teacherInfo[t] || { qual: "", rank: "" };
+              const tier = (absInfo.rank === inf.rank && absInfo.qual === inf.qual) ? 0
+                : (absInfo.rank === inf.rank) ? 1
+                : (absInfo.qual === inf.qual) ? 2 : 3;
+              return { t, tier, inf };
+            }).sort((a, b) => a.tier - b.tier).slice(0, 4);
+            const lines = scored.map((s, i) => `${i + 1}. ${s.t} (${[s.inf.rank, s.inf.qual].filter(Boolean).join(" ")})`).join("  ·  ");
+            drawLeft(ctx, lines || "—", x + 10, y + rowH / 2, groupW - 20, 13);
+          }
+          x += groupW;
         }
-        x += groupW;
 
+        // Free teachers cell (always shown)
         ctx.strokeRect(x, y, freeW, rowH);
         ctx.fillStyle = "#111"; ctx.font = `600 11px ${F}`;
         if (!assignments.length) {
           drawLeft(ctx, "Absent teacher is free", x + 12, y + rowH / 2, freeW - 24, 13);
         } else {
-          const free = data.teachers.filter(t => t !== absent && !onLeave.has(t) &&
-            !data.classes.some(c => {
-              const t1 = c[4][pi]; const s2 = c[5] ? c[5][pi] : null;
-              let active = true;
-              if (s2 && s2.mode === 'rotation' && s2.days.includes(dayIdx)) active = false;
-              if (t1 === t && active) return true;
-              if (s2 && s2.teacher === t && s2.mode !== 'same') return s2.mode === 'parallel' || s2.days.includes(dayIdx);
-              return false;
-            }));
           const ranked = free.map(t => `${t} (${options.teacherTotalPeriods(t)})`).join(", ");
           drawLeft(ctx, ranked || "No teachers free", x + 12, y + rowH / 2, freeW - 24, 13);
         }
+
         y += rowH;
       });
       return canvas;
