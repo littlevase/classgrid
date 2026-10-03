@@ -280,7 +280,13 @@ export async function createTimetableCanvas(
         if (s2 && (s2.subject || s2.teacher)) {
           if (s2.mode === "same") {
             const t = t1 || s2.teacher;
-            line = t ? `${sub1}/${s2.subject || "—"} - ${t}` : `${sub1}/${s2.subject || "—"}`;
+            const sub2 = s2.subject || "—";
+            const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
+            let displaySub;
+            if (!hasMask) displaySub = `${sub1}/${sub2}`;
+            else if (s2.days.includes(dayIdx)) displaySub = sub2;
+            else displaySub = sub1;
+            line = t ? `${displaySub} - ${t}` : displaySub;
           } else if (s2.mode === "parallel" || s2.days.includes(dayIdx)) {
             line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
           }
@@ -367,95 +373,216 @@ export async function createTimetableCanvas(
       return canvas;
     }
 
-    // 4. Timings
+    // 4. Timings — supports merge (Friday inline) and separate (two stacked tables)
     if (kind === "timings") {
       const title = data.schoolTimingsTitle || "SCHOOL TIMINGS";
       const wref = data.effectiveFromDate ? `w.e.f. ${data.effectiveFromDate}` : "";
-      const buildRows = (times: any[], assembly: any, breakAfter: number, breakLabel: string) => {
-        const rows: any[] = [];
-        const calc = (s: string, e: string) => {
-          if (!s || !e) return "—";
-          const parse = (x: string) => {
-            const m = x.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
-            if (!m) return null;
-            let h = parseInt(m[1], 10);
-            const min = parseInt(m[2], 10);
-            if (m[3] === "PM" && h < 12) h += 12;
-            if (m[3] === "AM" && h === 12) h = 0;
-            return h * 60 + min;
-          };
-          const ss = parse(s), ee = parse(e);
-          if (ss === null || ee === null) return "—";
-          let diff = ee - ss; if (diff < 0) diff += 24 * 60;
-          return `${diff} min`;
+
+      const calc = (s: string, e: string): string => {
+        if (!s || !e) return "—";
+        const parse = (x: string): number | null => {
+          const m = x.trim().toUpperCase().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+          if (!m) return null;
+          let h = parseInt(m[1], 10);
+          const min = parseInt(m[2], 10);
+          if (m[3] === "PM" && h < 12) h += 12;
+          if (m[3] === "AM" && h === 12) h = 0;
+          return h * 60 + min;
         };
+        const ss = parse(s), ee = parse(e);
+        if (ss === null || ee === null) return "—";
+        let diff = ee - ss;
+        if (diff < 0) diff += 24 * 60;
+        return `${diff} min`;
+      };
+
+      type Row = {
+        label: string;
+        start: string;
+        end: string;
+        dur: string;
+        isBreak?: boolean;
+        isDivider?: boolean;
+      };
+
+      const buildRows = (
+        times: any[],
+        assembly: any,
+        breakAfter: number,
+        breakLabel: string
+      ): Row[] => {
+        const rows: Row[] = [];
         if (assembly && (assembly.start || assembly.end)) {
-          rows.push({ label: "Assembly", start: assembly.start || "—", end: assembly.end || "—", dur: calc(assembly.start, assembly.end) });
+          rows.push({
+            label: "Assembly",
+            start: assembly.start || "—",
+            end: assembly.end || "—",
+            dur: calc(assembly.start, assembly.end),
+          });
         }
         data.periods.forEach((p, i) => {
           const pt = (times && times[i]) || { start: "", end: "" };
-          rows.push({ label: String(p), start: pt.start || "—", end: pt.end || "—", dur: calc(pt.start, pt.end) });
+          rows.push({
+            label: String(p),
+            start: pt.start || "—",
+            end: pt.end || "—",
+            dur: calc(pt.start, pt.end),
+          });
           if (breakAfter === p && i < data.periods.length - 1) {
             const bs = pt.end || "—";
             const be = (times[i + 1] && times[i + 1].start) || "—";
-            rows.push({ label: breakLabel, start: bs, end: be, dur: bs !== "—" && be !== "—" ? calc(bs, be) : "—", isBreak: true });
+            rows.push({
+              label: breakLabel,
+              start: bs,
+              end: be,
+              dur: bs !== "—" && be !== "—" ? calc(bs, be) : "—",
+              isBreak: true,
+            });
           }
         });
         return rows;
       };
-      const sections: any[] = [
-        { subtitle: wref ? `${title} (${wref})` : title, rows: buildRows(data.periodTimes || [], data.assemblyTime, data.breakAfter, "BREAK") }
-      ];
-      if (data.fridayTimings?.enabled && data.fridayTimings.periodTimes?.some(pt => pt.start || pt.end)) {
-        const dn = data.days[data.fridayTimings.dayIndex] || "Friday";
+
+      const ft = data.fridayTimings;
+      const fridayHasAnyData = !!(
+        ft &&
+        ((ft.assemblyTime && (ft.assemblyTime.start || ft.assemblyTime.end)) ||
+          (Array.isArray(ft.periodTimes) && ft.periodTimes.some(pt => pt && (pt.start || pt.end))))
+      );
+      const fridayDayName = ft ? (data.days[ft.dayIndex] || "Friday") : "Friday";
+
+      const mainRows = buildRows(data.periodTimes || [], data.assemblyTime, data.breakAfter, "BREAK");
+      const fridayRows = ft
+        ? buildRows(ft.periodTimes || [], ft.assemblyTime, ft.breakAfter, ft.breakLabel || "BREAK")
+        : [];
+
+      // Decide layout
+      const mergeMode = fridayHasAnyData && ft && !ft.enabled;
+      const separateMode = fridayHasAnyData && ft && ft.enabled;
+
+      // For merge mode: insert divider row into the main rows list
+      let combinedRows: Row[] = mainRows;
+      if (mergeMode) {
+        combinedRows = [
+          ...mainRows,
+          {
+            label: fridayDayName.toUpperCase() + (ft.note ? ` — ${ft.note}` : ""),
+            start: "",
+            end: "",
+            dur: "",
+            isDivider: true,
+          },
+          ...fridayRows,
+        ];
+      }
+
+      const sections: { subtitle: string; rows: Row[]; note?: string }[] = [];
+      if (separateMode) {
         sections.push({
-          subtitle: wref ? `${title} — ${dn} (${wref})` : `${title} — ${dn}`,
-          rows: buildRows(data.fridayTimings.periodTimes, data.fridayTimings.assemblyTime, data.fridayTimings.breakAfter, data.fridayTimings.breakLabel || "BREAK")
+          subtitle: wref ? `${title} (${wref})` : title,
+          rows: mainRows,
+        });
+        sections.push({
+          subtitle: wref ? `${title} — ${fridayDayName} (${wref})` : `${title} — ${fridayDayName}`,
+          rows: fridayRows,
+          note: ft.note || "",
+        });
+      } else {
+        sections.push({
+          subtitle: wref ? `${title} (${wref})` : title,
+          rows: combinedRows,
         });
       }
+
       const pad = 30, headerH = 130, headRowH = 50, rowH = 58, gapH = 40;
       const col1W = 200, col2W = 300, col3W = 200;
       const tableW = col1W + col2W + col3W;
       const totalW = pad * 2 + tableW;
+      const noteH = 26;
       let totalH = pad * 2;
       sections.forEach((s, si) => {
-        totalH += headerH + headRowH + s.rows.length * rowH + (si > 0 ? gapH : 0);
+        totalH += headerH + headRowH + s.rows.length * rowH + (s.note ? noteH : 0) + (si > 0 ? gapH : 0);
       });
+
       const canvas = document.createElement("canvas");
-      canvas.width = totalW * scale; canvas.height = totalH * scale;
+      canvas.width = totalW * scale;
+      canvas.height = totalH * scale;
       const ctx = canvas.getContext("2d")!;
       ctx.scale(scale, scale);
-      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, totalW, totalH);
-      ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      ctx.fillStyle = "#FFF";
+      ctx.fillRect(0, 0, totalW, totalH);
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+
       let y = pad;
       sections.forEach((s, si) => {
         if (si > 0) y += gapH;
         drawPageHeader(ctx, totalW, pad, headerH, s.subtitle);
+
         let ty = y + headerH;
+        if (s.note) {
+          ctx.font = `600 12px ${F}`;
+          ctx.fillStyle = "#4B5563";
+          ctx.fillText(s.note, totalW / 2, ty + 14);
+          ctx.fillStyle = "#000";
+          ty += noteH;
+        }
+
+        // Header row
         let x = pad;
-        ctx.fillStyle = "#EFEBE2"; ctx.fillRect(pad, ty, tableW, headRowH);
-        ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
-        ctx.strokeRect(x, ty, col1W, headRowH); ctx.fillStyle = "#1B4D3E";
-        ctx.font = `700 14px ${F}`; ctx.fillText("PERIOD", x + col1W / 2, ty + headRowH / 2); x += col1W;
-        ctx.strokeRect(x, ty, col2W, headRowH); ctx.fillText("TIME SLOT", x + col2W / 2, ty + headRowH / 2); x += col2W;
-        ctx.strokeRect(x, ty, col3W, headRowH); ctx.fillText("DURATION (MINS)", x + col3W / 2, ty + headRowH / 2);
+        ctx.fillStyle = "#EFEBE2";
+        ctx.fillRect(pad, ty, tableW, headRowH);
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x, ty, col1W, headRowH);
+        ctx.fillStyle = "#1B4D3E";
+        ctx.font = `700 14px ${F}`;
+        ctx.fillText("PERIOD", x + col1W / 2, ty + headRowH / 2);
+        x += col1W;
+        ctx.strokeRect(x, ty, col2W, headRowH);
+        ctx.fillText("TIME SLOT", x + col2W / 2, ty + headRowH / 2);
+        x += col2W;
+        ctx.strokeRect(x, ty, col3W, headRowH);
+        ctx.fillText("DURATION (MINS)", x + col3W / 2, ty + headRowH / 2);
         ty += headRowH;
-        s.rows.forEach((r: any, idx: number) => {
+
+        // Body rows
+        s.rows.forEach((r, idx) => {
+          if (r.isDivider) {
+            // Full-width divider row
+            ctx.fillStyle = "#D6D3D1";
+            ctx.fillRect(pad, ty, tableW, rowH);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(pad, ty, tableW, rowH);
+            ctx.fillStyle = "#111827";
+            ctx.font = `800 15px ${F}`;
+            ctx.textAlign = "center";
+            ctx.fillText(r.label, pad + tableW / 2, ty + rowH / 2);
+            ty += rowH;
+            return;
+          }
           x = pad;
           ctx.fillStyle = r.isBreak ? "#F1F5F9" : (idx % 2 === 0 ? "#FFF" : "#F8FAFC");
           ctx.fillRect(pad, ty, tableW, rowH);
-          ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
-          ctx.strokeRect(x, ty, col1W, rowH); ctx.fillStyle = "#111";
+          ctx.strokeStyle = "#000";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x, ty, col1W, rowH);
+          ctx.fillStyle = "#111827";
           ctx.font = `700 14px ${F}`;
-          ctx.fillText(r.label, x + col1W / 2, ty + rowH / 2); x += col1W;
+          ctx.fillText(r.label, x + col1W / 2, ty + rowH / 2);
+          x += col1W;
           ctx.strokeRect(x, ty, col2W, rowH);
-          ctx.fillText(`${r.start} - ${r.end}`, x + col2W / 2, ty + rowH / 2); x += col2W;
+          ctx.fillText(`${r.start} - ${r.end}`, x + col2W / 2, ty + rowH / 2);
+          x += col2W;
           ctx.strokeRect(x, ty, col3W, rowH);
           ctx.fillText(r.dur, x + col3W / 2, ty + rowH / 2);
           ty += rowH;
         });
+
         y = ty;
       });
+
       return canvas;
     }
 
