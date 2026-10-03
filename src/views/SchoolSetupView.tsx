@@ -1563,13 +1563,14 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
           <label className="flex-1 min-w-[140px] min-h-[44px] px-4 py-2.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition">
             <Upload className="w-4 h-4" />
             <span>Restore Backup File...</span>
-            <input type="file" accept=".json,application/json" onChange={handleImportBackup} className="hidden" />
+            <input type="file" accept=".json,application/json,.txt,text/plain" onChange={handleImportBackup} className="hidden" />
           </label>
         </div>
 
         <div className="mt-3 p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/60 rounded-xl text-[11px] text-sky-900 dark:text-sky-200 leading-relaxed">
           <b>Tip:</b> On Android, tap <b>Share to WhatsApp / Drive</b> to send the backup directly without downloading first.
-          To restore, save the JSON file from WhatsApp/Drive to your phone, then tap <b>Restore Backup File</b>.
+The shared file uses a <b>.txt</b> extension so Android accepts it — that's normal, and it imports fine.
+To restore, save the file from WhatsApp/Drive to your phone, then tap <b>Restore Backup File</b>.
         </div>
       </div>
 
