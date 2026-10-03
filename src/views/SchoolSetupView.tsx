@@ -25,6 +25,58 @@ interface SchoolSetupViewProps {
   onNavigate?: (tab: ActiveTab, ctx?: { period?: number; teacher?: string }) => void;
 }
 
+/* ============================================================
+   TIME FORMATTING HELPERS
+   ============================================================ */
+
+// Parse "H:MM" or "H:MM AM/PM" into { hour, minute, suffix | null }.
+// Returns null if not parseable.
+function parseTimeInput(raw: string): { hour: number; minute: number; suffix: 'AM' | 'PM' | null } | null {
+  const s = String(raw || '').trim().toUpperCase();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/);
+  if (!m) return null;
+  const hour = parseInt(m[1], 10);
+  const minute = parseInt(m[2], 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  const suffix = (m[3] as 'AM' | 'PM' | undefined) || null;
+  return { hour, minute, suffix };
+}
+
+// Format a parsed time into "HH:MM AM/PM"
+function formatTime(hour: number, minute: number, suffix: 'AM' | 'PM'): string {
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  return `${hh}:${mm} ${suffix}`;
+}
+
+// Decide what suffix to use for a typed value, given the current mode
+// and the last-seen hour (for auto-flip).
+function resolveSuffix(
+  parsed: { hour: number; minute: number; suffix: 'AM' | 'PM' | null },
+  currentMode: 'AM' | 'PM',
+  lastSeenHour: number | null
+): { suffix: 'AM' | 'PM'; flipped: boolean } {
+  // 1. Explicit suffix typed
+  if (parsed.suffix) {
+    return { suffix: parsed.suffix, flipped: parsed.suffix !== currentMode };
+  }
+  // 2. Hour = 12 → assume PM
+  if (parsed.hour === 12) {
+    return { suffix: 'PM', flipped: currentMode !== 'PM' };
+  }
+  // 3. Hour 1-11
+  if (currentMode === 'PM') {
+    return { suffix: 'PM', flipped: false };
+  }
+  // currentMode === 'AM'
+  if (lastSeenHour !== null && parsed.hour < lastSeenHour) {
+    // crossing noon → flip to PM
+    return { suffix: 'PM', flipped: true };
+  }
+  return { suffix: 'AM', flipped: false };
+}
+
 export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) => {
   const {
     data,
@@ -63,6 +115,10 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
 
   // Tracks which inputs were auto-filled last time — so we never overwrite typed values
   const [autoFilled, setAutoFilled] = useState<Record<string, boolean>>({});
+
+  // AM/PM modes for main and Friday schedules (independent)
+  const [mainAmPmMode, setMainAmPmMode] = useState<'AM' | 'PM'>('AM');
+  const [fridayAmPmMode, setFridayAmPmMode] = useState<'AM' | 'PM'>('AM');
 
   const markAutoFilled = (key: string) =>
     setAutoFilled(prev => ({ ...prev, [key]: true }));
@@ -130,22 +186,68 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
   });
 
   /* ============================================================
+     FORMAT-ON-BLUR HELPERS
+     ============================================================ */
+
+  // Get the last-seen-hour for a schedule — used for auto-flip across noon.
+  // Reads the previous period's end hour (or assembly end for Period 1).
+  const getLastSeenHourMain = (idx: number): number | null => {
+    if (idx === 0) {
+      const ae = data.assemblyTime?.end || '';
+      const p = parseTimeInput(ae);
+      return p ? p.hour : null;
+    }
+    const prevEnd = data.periodTimes?.[idx - 1]?.end || '';
+    const p = parseTimeInput(prevEnd);
+    return p ? p.hour : null;
+  };
+
+  const getLastSeenHourFriday = (idx: number): number | null => {
+    if (idx === 0) {
+      const ae = data.fridayTimings?.assemblyTime?.end || '';
+      const p = parseTimeInput(ae);
+      return p ? p.hour : null;
+    }
+    const prevEnd = data.fridayTimings?.periodTimes?.[idx - 1]?.end || '';
+    const p = parseTimeInput(prevEnd);
+    return p ? p.hour : null;
+  };
+
+  // Format a typed value on blur — main schedule. Returns formatted string (or original if unparseable).
+  const formatMainValue = (raw: string, idx: number | 'assembly'): string => {
+    const parsed = parseTimeInput(raw);
+    if (!parsed) return raw;
+    const lastSeen = idx === 'assembly' ? null : getLastSeenHourMain(idx as number);
+    const { suffix, flipped } = resolveSuffix(parsed, mainAmPmMode, lastSeen);
+    if (flipped) setMainAmPmMode(suffix);
+    return formatTime(parsed.hour, parsed.minute, suffix);
+  };
+
+  const formatFridayValue = (raw: string, idx: number | 'assembly'): string => {
+    const parsed = parseTimeInput(raw);
+    if (!parsed) return raw;
+    const lastSeen = idx === 'assembly' ? null : getLastSeenHourFriday(idx as number);
+    const { suffix, flipped } = resolveSuffix(parsed, fridayAmPmMode, lastSeen);
+    if (flipped) setFridayAmPmMode(suffix);
+    return formatTime(parsed.hour, parsed.minute, suffix);
+  };
+
+  /* ============================================================
      AUTO-CHAINING HELPERS
      ============================================================ */
 
-  // Whether the given field should be auto-overwritten with a chained value.
-  // True if: currently empty, OR was auto-filled last time.
   const canAutoFill = (key: string, currentValue: string): boolean => {
     if (!currentValue || !currentValue.trim()) return true;
     return !!autoFilled[key];
   };
 
-  // ---------- Main schedule: assembly end → Period 1 start ----------
-  const handleMainAssemblyEndInput = (value: string) => {
-    setAssemblyEnd(value);
-    updateData(prev => ({ ...prev, assemblyTime: { ...prev.assemblyTime, end: value } }), true);
+  // ---------- Main: Assembly End → Period 1 Start ----------
+  const handleMainAssemblyEndBlur = (rawValue: string) => {
+    const formatted = formatMainValue(rawValue, 'assembly');
+    setAssemblyEnd(formatted);
+    updateData(prev => ({ ...prev, assemblyTime: { ...prev.assemblyTime, end: formatted } }), true);
 
-    if (!data.autoChainTimes || !value) return;
+    if (!data.autoChainTimes || !formatted) return;
     const key = 'main-p0-start';
     const currentP1Start = data.periodTimes?.[0]?.start || '';
     if (!canAutoFill(key, currentP1Start)) return;
@@ -153,25 +255,24 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
     updateData(prev => {
       const next = [...prev.periodTimes];
       if (!next[0]) next[0] = { start: '', end: '' };
-      next[0] = { ...next[0], start: value };
+      next[0] = { ...next[0], start: formatted };
       return { ...prev, periodTimes: next };
     }, true);
     markAutoFilled(key);
   };
 
-  // ---------- Main schedule: Period N end → Period N+1 start ----------
-  const handleMainPeriodEndInput = (idx: number, value: string) => {
+  // ---------- Main: Period N End → Period N+1 Start ----------
+  const handleMainPeriodEndBlur = (idx: number, rawValue: string) => {
+    const formatted = formatMainValue(rawValue, idx);
     updateData(prev => {
       const next = [...prev.periodTimes];
       if (!next[idx]) next[idx] = { start: '', end: '' };
-      next[idx] = { ...next[idx], end: value };
+      next[idx] = { ...next[idx], end: formatted };
       return { ...prev, periodTimes: next };
     }, true);
 
-    if (!data.autoChainTimes || !value) return;
-    // Don't chain if the next period index is out of bounds
+    if (!data.autoChainTimes || !formatted) return;
     if (idx + 1 >= data.periods.length) return;
-    // Don't chain across the break
     const thisPeriodNum = data.periods[idx];
     if (data.breakAfter && data.breakAfter === thisPeriodNum) return;
 
@@ -182,33 +283,48 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
     updateData(prev => {
       const next = [...prev.periodTimes];
       if (!next[idx + 1]) next[idx + 1] = { start: '', end: '' };
-      next[idx + 1] = { ...next[idx + 1], start: value };
+      next[idx + 1] = { ...next[idx + 1], start: formatted };
       return { ...prev, periodTimes: next };
     }, true);
     markAutoFilled(key);
   };
 
-  const handleMainPeriodStartInput = (idx: number, value: string) => {
+  // ---------- Main: Start blur (padding only, no chaining) ----------
+  const handleMainPeriodStartBlur = (idx: number, rawValue: string) => {
+    const formatted = formatMainValue(rawValue, idx);
     clearAutoFilled(`main-p${idx}-start`);
     updateData(prev => {
       const next = [...prev.periodTimes];
       if (!next[idx]) next[idx] = { start: '', end: '' };
-      next[idx] = { ...next[idx], start: value };
+      next[idx] = { ...next[idx], start: formatted };
       return { ...prev, periodTimes: next };
     }, true);
   };
 
-  // ---------- Friday schedule: assembly end → Period 1 start ----------
-  const handleFridayAssemblyEndInput = (value: string) => {
+  // ---------- Main: Assembly Start blur (padding only) ----------
+  const handleMainAssemblyStartBlur = (rawValue: string) => {
+    const parsed = parseTimeInput(rawValue);
+    let formatted = rawValue;
+    if (parsed) {
+      const { suffix } = resolveSuffix(parsed, mainAmPmMode, null);
+      formatted = formatTime(parsed.hour, parsed.minute, suffix);
+    }
+    setAssemblyStart(formatted);
+    updateData(prev => ({ ...prev, assemblyTime: { ...prev.assemblyTime, start: formatted } }), true);
+  };
+
+  // ---------- Friday: Assembly End → Period 1 Start ----------
+  const handleFridayAssemblyEndBlur = (rawValue: string) => {
+    const formatted = formatFridayValue(rawValue, 'assembly');
     updateData(prev => ({
       ...prev,
       fridayTimings: {
         ...prev.fridayTimings,
-        assemblyTime: { ...prev.fridayTimings.assemblyTime, end: value }
+        assemblyTime: { ...prev.fridayTimings.assemblyTime, end: formatted }
       }
     }), true);
 
-    if (!data.autoChainTimes || !value) return;
+    if (!data.autoChainTimes || !formatted) return;
     const key = 'ft-p0-start';
     const currentP1Start = data.fridayTimings?.periodTimes?.[0]?.start || '';
     if (!canAutoFill(key, currentP1Start)) return;
@@ -216,22 +332,23 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
     updateData(prev => {
       const next = [...(prev.fridayTimings.periodTimes || [])];
       while (next.length < prev.periods.length) next.push({ start: '', end: '' });
-      next[0] = { ...next[0], start: value };
+      next[0] = { ...next[0], start: formatted };
       return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
     }, true);
     markAutoFilled(key);
   };
 
-  // ---------- Friday schedule: Period N end → Period N+1 start ----------
-  const handleFridayPeriodEndInput = (idx: number, value: string) => {
+  // ---------- Friday: Period N End → Period N+1 Start ----------
+  const handleFridayPeriodEndBlur = (idx: number, rawValue: string) => {
+    const formatted = formatFridayValue(rawValue, idx);
     updateData(prev => {
       const next = [...(prev.fridayTimings.periodTimes || [])];
       while (next.length < prev.periods.length) next.push({ start: '', end: '' });
-      next[idx] = { ...next[idx], end: value };
+      next[idx] = { ...next[idx], end: formatted };
       return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
     }, true);
 
-    if (!data.autoChainTimes || !value) return;
+    if (!data.autoChainTimes || !formatted) return;
     if (idx + 1 >= data.periods.length) return;
     const thisPeriodNum = data.periods[idx];
     if (fridayBreakAfter && fridayBreakAfter === thisPeriodNum) return;
@@ -243,20 +360,38 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
     updateData(prev => {
       const next = [...(prev.fridayTimings.periodTimes || [])];
       while (next.length < prev.periods.length) next.push({ start: '', end: '' });
-      next[idx + 1] = { ...next[idx + 1], start: value };
+      next[idx + 1] = { ...next[idx + 1], start: formatted };
       return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
     }, true);
     markAutoFilled(key);
   };
 
-  const handleFridayPeriodStartInput = (idx: number, value: string) => {
+  // ---------- Friday: Start blur (padding only) ----------
+  const handleFridayPeriodStartBlur = (idx: number, rawValue: string) => {
+    const formatted = formatFridayValue(rawValue, idx);
     clearAutoFilled(`ft-p${idx}-start`);
     updateData(prev => {
       const next = [...(prev.fridayTimings.periodTimes || [])];
       while (next.length < prev.periods.length) next.push({ start: '', end: '' });
-      next[idx] = { ...next[idx], start: value };
+      next[idx] = { ...next[idx], start: formatted };
       return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
     }, true);
+  };
+
+  const handleFridayAssemblyStartBlur = (rawValue: string) => {
+    const parsed = parseTimeInput(rawValue);
+    let formatted = rawValue;
+    if (parsed) {
+      const { suffix } = resolveSuffix(parsed, fridayAmPmMode, null);
+      formatted = formatTime(parsed.hour, parsed.minute, suffix);
+    }
+    updateData(prev => ({
+      ...prev,
+      fridayTimings: {
+        ...prev.fridayTimings,
+        assemblyTime: { ...prev.fridayTimings.assemblyTime, start: formatted }
+      }
+    }), true);
   };
 
   const toggleAutoChain = (on: boolean) => {
@@ -904,9 +1039,11 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
             </label>
             <input
               type="text"
-              value={assemblyStart}
-              onChange={(e) => setAssemblyStart(e.target.value)}
-              placeholder="e.g. 07:45 AM"
+              defaultValue={assemblyStart}
+              key={`asm-start-${assemblyStart}`}
+              onBlur={(e) => handleMainAssemblyStartBlur(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              placeholder="e.g. 7:45"
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-sm font-semibold"
             />
           </div>
@@ -917,12 +1054,45 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
             </label>
             <input
               type="text"
-              value={assemblyEnd}
-              onChange={(e) => handleMainAssemblyEndInput(e.target.value)}
-              placeholder="e.g. 08:00 AM"
+              defaultValue={assemblyEnd}
+              key={`asm-end-${assemblyEnd}`}
+              onBlur={(e) => handleMainAssemblyEndBlur(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              placeholder="e.g. 8:00"
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-sm font-semibold"
             />
           </div>
+        </div>
+
+        {/* AM/PM toggle */}
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800 rounded-xl p-1">
+            <button
+              type="button"
+              onClick={() => setMainAmPmMode('AM')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                mainAmPmMode === 'AM'
+                  ? 'bg-emerald-800 text-white shadow-xs'
+                  : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+              }`}
+            >
+              AM
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainAmPmMode('PM')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                mainAmPmMode === 'PM'
+                  ? 'bg-emerald-800 text-white shadow-xs'
+                  : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+              }`}
+            >
+              PM
+            </button>
+          </div>
+          <span className="text-[11px] text-stone-500 dark:text-stone-400 font-medium">
+            Times you type without AM/PM use this mode. Say <b>8:15</b> → <b>08:15 {mainAmPmMode}</b>.
+          </span>
         </div>
 
         {/* Auto-chain toggle */}
@@ -944,15 +1114,19 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
               </span>
               <input
                 type="text"
-                value={data.periodTimes[idx]?.start || ""}
-                onChange={(e) => handleMainPeriodStartInput(idx, e.target.value)}
+                defaultValue={data.periodTimes[idx]?.start || ""}
+                key={`main-p${idx}-start-${data.periodTimes[idx]?.start || ''}`}
+                onBlur={(e) => handleMainPeriodStartBlur(idx, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 placeholder="Start"
                 className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md mb-1"
               />
               <input
                 type="text"
-                value={data.periodTimes[idx]?.end || ""}
-                onChange={(e) => handleMainPeriodEndInput(idx, e.target.value)}
+                defaultValue={data.periodTimes[idx]?.end || ""}
+                key={`main-p${idx}-end-${data.periodTimes[idx]?.end || ''}`}
+                onBlur={(e) => handleMainPeriodEndBlur(idx, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 placeholder="End"
                 className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md"
               />
@@ -1065,18 +1239,11 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
               </label>
               <input
                 type="text"
-                value={data.fridayTimings?.assemblyTime?.start || ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  updateData(prev => ({
-                    ...prev,
-                    fridayTimings: {
-                      ...prev.fridayTimings,
-                      assemblyTime: { ...prev.fridayTimings.assemblyTime, start: val }
-                    }
-                  }), true);
-                }}
-                placeholder="e.g. 07:45 AM"
+                defaultValue={data.fridayTimings?.assemblyTime?.start || ''}
+                key={`ft-asm-start-${data.fridayTimings?.assemblyTime?.start || ''}`}
+                onBlur={(e) => handleFridayAssemblyStartBlur(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                placeholder="e.g. 7:45"
                 className="w-full px-3.5 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-semibold"
               />
             </div>
@@ -1087,12 +1254,45 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
               </label>
               <input
                 type="text"
-                value={data.fridayTimings?.assemblyTime?.end || ''}
-                onChange={(e) => handleFridayAssemblyEndInput(e.target.value)}
-                placeholder="e.g. 08:00 AM"
+                defaultValue={data.fridayTimings?.assemblyTime?.end || ''}
+                key={`ft-asm-end-${data.fridayTimings?.assemblyTime?.end || ''}`}
+                onBlur={(e) => handleFridayAssemblyEndBlur(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                placeholder="e.g. 8:00"
                 className="w-full px-3.5 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-semibold"
               />
             </div>
+          </div>
+
+          {/* Friday AM/PM toggle */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1 bg-stone-100 dark:bg-stone-800 rounded-xl p-1">
+              <button
+                type="button"
+                onClick={() => setFridayAmPmMode('AM')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  fridayAmPmMode === 'AM'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+                }`}
+              >
+                AM
+              </button>
+              <button
+                type="button"
+                onClick={() => setFridayAmPmMode('PM')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  fridayAmPmMode === 'PM'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+                }`}
+              >
+                PM
+              </button>
+            </div>
+            <span className="text-[11px] text-stone-500 dark:text-stone-400 font-medium">
+              Times you type without AM/PM use this mode. Say <b>8:15</b> → <b>08:15 {fridayAmPmMode}</b>.
+            </span>
           </div>
 
           <div>
@@ -1107,15 +1307,19 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
                     <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-400 block mb-1">Period {p}</span>
                     <input
                       type="text"
-                      value={pt.start || ''}
-                      onChange={(e) => handleFridayPeriodStartInput(idx, e.target.value)}
+                      defaultValue={pt.start || ''}
+                      key={`ft-p${idx}-start-${pt.start || ''}`}
+                      onBlur={(e) => handleFridayPeriodStartBlur(idx, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       placeholder="Start"
                       className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md mb-1"
                     />
                     <input
                       type="text"
-                      value={pt.end || ''}
-                      onChange={(e) => handleFridayPeriodEndInput(idx, e.target.value)}
+                      defaultValue={pt.end || ''}
+                      key={`ft-p${idx}-end-${pt.end || ''}`}
+                      onBlur={(e) => handleFridayPeriodEndBlur(idx, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       placeholder="End"
                       className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md"
                     />
