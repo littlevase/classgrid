@@ -61,6 +61,20 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
   const [selectedScenario, setSelectedScenario] = useState("");
   const scenarioNames = getScenarioNames();
 
+  // Tracks which inputs were auto-filled last time — so we never overwrite typed values
+  const [autoFilled, setAutoFilled] = useState<Record<string, boolean>>({});
+
+  const markAutoFilled = (key: string) =>
+    setAutoFilled(prev => ({ ...prev, [key]: true }));
+
+  const clearAutoFilled = (key: string) =>
+    setAutoFilled(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
   // --- Storage quota indicator ---
   const [storageInfo, setStorageInfo] = useState<{ bytes: number; quotaBytes: number } | null>(null);
 
@@ -114,6 +128,147 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
     isOpen: false,
     options: { message: "" }
   });
+
+  /* ============================================================
+     AUTO-CHAINING HELPERS
+     ============================================================ */
+
+  // Whether the given field should be auto-overwritten with a chained value.
+  // True if: currently empty, OR was auto-filled last time.
+  const canAutoFill = (key: string, currentValue: string): boolean => {
+    if (!currentValue || !currentValue.trim()) return true;
+    return !!autoFilled[key];
+  };
+
+  // ---------- Main schedule: assembly end → Period 1 start ----------
+  const handleMainAssemblyEndInput = (value: string) => {
+    setAssemblyEnd(value);
+    updateData(prev => ({ ...prev, assemblyTime: { ...prev.assemblyTime, end: value } }), true);
+
+    if (!data.autoChainTimes || !value) return;
+    const key = 'main-p0-start';
+    const currentP1Start = data.periodTimes?.[0]?.start || '';
+    if (!canAutoFill(key, currentP1Start)) return;
+
+    updateData(prev => {
+      const next = [...prev.periodTimes];
+      if (!next[0]) next[0] = { start: '', end: '' };
+      next[0] = { ...next[0], start: value };
+      return { ...prev, periodTimes: next };
+    }, true);
+    markAutoFilled(key);
+  };
+
+  // ---------- Main schedule: Period N end → Period N+1 start ----------
+  const handleMainPeriodEndInput = (idx: number, value: string) => {
+    updateData(prev => {
+      const next = [...prev.periodTimes];
+      if (!next[idx]) next[idx] = { start: '', end: '' };
+      next[idx] = { ...next[idx], end: value };
+      return { ...prev, periodTimes: next };
+    }, true);
+
+    if (!data.autoChainTimes || !value) return;
+    // Don't chain if the next period index is out of bounds
+    if (idx + 1 >= data.periods.length) return;
+    // Don't chain across the break
+    const thisPeriodNum = data.periods[idx];
+    if (data.breakAfter && data.breakAfter === thisPeriodNum) return;
+
+    const key = `main-p${idx + 1}-start`;
+    const currentNextStart = data.periodTimes?.[idx + 1]?.start || '';
+    if (!canAutoFill(key, currentNextStart)) return;
+
+    updateData(prev => {
+      const next = [...prev.periodTimes];
+      if (!next[idx + 1]) next[idx + 1] = { start: '', end: '' };
+      next[idx + 1] = { ...next[idx + 1], start: value };
+      return { ...prev, periodTimes: next };
+    }, true);
+    markAutoFilled(key);
+  };
+
+  const handleMainPeriodStartInput = (idx: number, value: string) => {
+    clearAutoFilled(`main-p${idx}-start`);
+    updateData(prev => {
+      const next = [...prev.periodTimes];
+      if (!next[idx]) next[idx] = { start: '', end: '' };
+      next[idx] = { ...next[idx], start: value };
+      return { ...prev, periodTimes: next };
+    }, true);
+  };
+
+  // ---------- Friday schedule: assembly end → Period 1 start ----------
+  const handleFridayAssemblyEndInput = (value: string) => {
+    updateData(prev => ({
+      ...prev,
+      fridayTimings: {
+        ...prev.fridayTimings,
+        assemblyTime: { ...prev.fridayTimings.assemblyTime, end: value }
+      }
+    }), true);
+
+    if (!data.autoChainTimes || !value) return;
+    const key = 'ft-p0-start';
+    const currentP1Start = data.fridayTimings?.periodTimes?.[0]?.start || '';
+    if (!canAutoFill(key, currentP1Start)) return;
+
+    updateData(prev => {
+      const next = [...(prev.fridayTimings.periodTimes || [])];
+      while (next.length < prev.periods.length) next.push({ start: '', end: '' });
+      next[0] = { ...next[0], start: value };
+      return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
+    }, true);
+    markAutoFilled(key);
+  };
+
+  // ---------- Friday schedule: Period N end → Period N+1 start ----------
+  const handleFridayPeriodEndInput = (idx: number, value: string) => {
+    updateData(prev => {
+      const next = [...(prev.fridayTimings.periodTimes || [])];
+      while (next.length < prev.periods.length) next.push({ start: '', end: '' });
+      next[idx] = { ...next[idx], end: value };
+      return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
+    }, true);
+
+    if (!data.autoChainTimes || !value) return;
+    if (idx + 1 >= data.periods.length) return;
+    const thisPeriodNum = data.periods[idx];
+    if (fridayBreakAfter && fridayBreakAfter === thisPeriodNum) return;
+
+    const key = `ft-p${idx + 1}-start`;
+    const currentNextStart = data.fridayTimings?.periodTimes?.[idx + 1]?.start || '';
+    if (!canAutoFill(key, currentNextStart)) return;
+
+    updateData(prev => {
+      const next = [...(prev.fridayTimings.periodTimes || [])];
+      while (next.length < prev.periods.length) next.push({ start: '', end: '' });
+      next[idx + 1] = { ...next[idx + 1], start: value };
+      return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
+    }, true);
+    markAutoFilled(key);
+  };
+
+  const handleFridayPeriodStartInput = (idx: number, value: string) => {
+    clearAutoFilled(`ft-p${idx}-start`);
+    updateData(prev => {
+      const next = [...(prev.fridayTimings.periodTimes || [])];
+      while (next.length < prev.periods.length) next.push({ start: '', end: '' });
+      next[idx] = { ...next[idx], start: value };
+      return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
+    }, true);
+  };
+
+  const toggleAutoChain = (on: boolean) => {
+    updateData(prev => ({ ...prev, autoChainTimes: on }));
+    if (!on) {
+      setAutoFilled({});
+    }
+  };
+
+  /* ============================================================
+     OTHER ACTIONS
+     ============================================================ */
 
   const handleSaveGeneralSetup = async () => {
     if (periodCount < data.periods.length) {
@@ -751,7 +906,7 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
               type="text"
               value={assemblyStart}
               onChange={(e) => setAssemblyStart(e.target.value)}
-              placeholder="e.g. 7:45 AM"
+              placeholder="e.g. 07:45 AM"
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-sm font-semibold"
             />
           </div>
@@ -763,12 +918,23 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
             <input
               type="text"
               value={assemblyEnd}
-              onChange={(e) => setAssemblyEnd(e.target.value)}
-              placeholder="e.g. 8:00 AM"
+              onChange={(e) => handleMainAssemblyEndInput(e.target.value)}
+              placeholder="e.g. 08:00 AM"
               className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-sm font-semibold"
             />
           </div>
         </div>
+
+        {/* Auto-chain toggle */}
+        <label className="flex items-center gap-2 mb-3 text-xs font-bold text-stone-700 dark:text-stone-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!data.autoChainTimes}
+            onChange={(e) => toggleAutoChain(e.target.checked)}
+            className="rounded text-emerald-800 focus:ring-emerald-700"
+          />
+          <span>Auto-fill next period's start from previous period's end</span>
+        </label>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
           {data.periods.map((p, idx) => (
@@ -779,28 +945,14 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
               <input
                 type="text"
                 value={data.periodTimes[idx]?.start || ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  updateData(prev => {
-                    const next = [...prev.periodTimes];
-                    next[idx] = { ...next[idx], start: val };
-                    return { ...prev, periodTimes: next };
-                  }, true);
-                }}
+                onChange={(e) => handleMainPeriodStartInput(idx, e.target.value)}
                 placeholder="Start"
                 className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md mb-1"
               />
               <input
                 type="text"
                 value={data.periodTimes[idx]?.end || ""}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  updateData(prev => {
-                    const next = [...prev.periodTimes];
-                    next[idx] = { ...next[idx], end: val };
-                    return { ...prev, periodTimes: next };
-                  }, true);
-                }}
+                onChange={(e) => handleMainPeriodEndInput(idx, e.target.value)}
                 placeholder="End"
                 className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md"
               />
@@ -819,11 +971,7 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
         </div>
       </div>
 
-      {/* ============================================================
-          FRIDAY / DAY-SPECIFIC TIMINGS
-          — Editor is ALWAYS visible and editable.
-          — The checkbox only controls print layout (merged vs two pages).
-          ============================================================ */}
+      {/* Friday / Day-specific timings — always visible; checkbox only controls print layout */}
       <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 sm:p-6 border border-stone-200 dark:border-stone-800 shadow-xs">
         <div className="flex items-center justify-between pb-4 mb-4 border-b border-stone-200 dark:border-stone-800">
           <div className="flex items-center gap-2.5">
@@ -909,6 +1057,44 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
             </div>
           </div>
 
+          {/* Friday assembly fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                Assembly Start (Friday)
+              </label>
+              <input
+                type="text"
+                value={data.fridayTimings?.assemblyTime?.start || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  updateData(prev => ({
+                    ...prev,
+                    fridayTimings: {
+                      ...prev.fridayTimings,
+                      assemblyTime: { ...prev.fridayTimings.assemblyTime, start: val }
+                    }
+                  }), true);
+                }}
+                placeholder="e.g. 07:45 AM"
+                className="w-full px-3.5 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-semibold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                Assembly End (Friday)
+              </label>
+              <input
+                type="text"
+                value={data.fridayTimings?.assemblyTime?.end || ''}
+                onChange={(e) => handleFridayAssemblyEndInput(e.target.value)}
+                placeholder="e.g. 08:00 AM"
+                className="w-full px-3.5 py-2 bg-stone-50 dark:bg-stone-950 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-semibold"
+              />
+            </div>
+          </div>
+
           <div>
             <div className="text-[11px] font-bold text-stone-500 uppercase tracking-wider mb-2">
               Period times for this day
@@ -922,30 +1108,14 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
                     <input
                       type="text"
                       value={pt.start || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        updateData(prev => {
-                          const next = [...(prev.fridayTimings.periodTimes || [])];
-                          while (next.length < prev.periods.length) next.push({ start: '', end: '' });
-                          next[idx] = { ...next[idx], start: val };
-                          return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
-                        }, true);
-                      }}
+                      onChange={(e) => handleFridayPeriodStartInput(idx, e.target.value)}
                       placeholder="Start"
                       className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md mb-1"
                     />
                     <input
                       type="text"
                       value={pt.end || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        updateData(prev => {
-                          const next = [...(prev.fridayTimings.periodTimes || [])];
-                          while (next.length < prev.periods.length) next.push({ start: '', end: '' });
-                          next[idx] = { ...next[idx], end: val };
-                          return { ...prev, fridayTimings: { ...prev.fridayTimings, periodTimes: next } };
-                        }, true);
-                      }}
+                      onChange={(e) => handleFridayPeriodEndInput(idx, e.target.value)}
                       placeholder="End"
                       className="w-full text-xs px-2 py-1 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-md"
                     />
@@ -967,6 +1137,7 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
                     assemblyTime: { ...prev.assemblyTime }
                   }
                 }));
+                setAutoFilled({});
                 alert('Weekday times copied to Friday. Edit only the periods that differ.');
               }}
               className="px-4 py-2.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-xl text-xs font-bold transition"
