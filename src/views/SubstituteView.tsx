@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTimetable } from '../context/TimetableContext';
 import { LongLeave, DAY_NAMES } from '../types/timetable';
 import { createTimetableCanvas, shareOrDownloadCanvas } from '../utils/canvasExport';
@@ -15,7 +15,9 @@ import {
   Pencil,
   Trash2,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  ChevronDown,
+  Users
 } from 'lucide-react';
 
 export const SubstituteView: React.FC = () => {
@@ -38,6 +40,18 @@ export const SubstituteView: React.FC = () => {
   const [showLongLeaveForm, setShowLongLeaveForm] = useState<boolean>(false);
   const [editingLongLeaveId, setEditingLongLeaveId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [shortLeavesOpen, setShortLeavesOpen] = useState<boolean>(false);
+
+  // --- Auto-reset to today on mount if the stored date is empty or in the past ---
+  useEffect(() => {
+    const today = dateKey();
+    const stored = data.leaveDate || "";
+    if (!stored || stored < today) {
+      setLeaveDate(today);
+      updateData(prev => ({ ...prev, leaveDate: today }), true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Long leave form inputs
   const [llTeacher, setLlTeacher] = useState<string>(data.teachers[0] || "");
@@ -227,7 +241,6 @@ export const SubstituteView: React.FC = () => {
   };
 
   const handlePrintSubstitute = () => {
-    // Header cells conditionally rendered to match on-screen table
     const headerCells = [
       `<th style="width: 20%; padding: 6px; border: 1px solid #000;">Period &amp; Assignment</th>`
     ];
@@ -279,7 +292,6 @@ export const SubstituteView: React.FC = () => {
     triggerPrint(content, { orientation: 'landscape', printSize: 'm' });
   };
 
-  // --- export substitute board as PNG image ---
   const handleExportImage = async (share: boolean) => {
     if (!absentTeacher) {
       alert("Please select an absent teacher first.");
@@ -312,7 +324,7 @@ export const SubstituteView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Configuration & Selection Card */}
+      {/* ============================== 1. CONFIGURATION ============================== */}
       <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 border border-stone-200 dark:border-stone-800 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
           <div>
@@ -398,6 +410,7 @@ export const SubstituteView: React.FC = () => {
             </select>
           </div>
         </div>
+
         <div className="mt-4 space-y-2 border-t border-stone-200 dark:border-stone-800 pt-4">
           <label className="flex items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
             <input type="checkbox"
@@ -421,6 +434,7 @@ export const SubstituteView: React.FC = () => {
             <span>Include non-teaching staff (Principal, Head, etc.)</span>
           </label>
         </div>
+
         {!isDayInWeek && (
           <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-medium">
             This date falls on a weekend or non-instructional day ({DAY_NAMES[dayIdx] || "Outside calendar"}).
@@ -428,99 +442,97 @@ export const SubstituteView: React.FC = () => {
         )}
       </div>
 
-      {/* Dynamic-column Substitution Table */}
-      <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 overflow-hidden shadow-xs">
-        <div className="p-4 border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/30 flex items-center justify-between">
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">
-              Coverage Recommendation Table
-            </h3>
-            <p className="text-[11px] text-stone-500">
-              Matching workload and group (Science/Arts/IT) for {absentTeacher}
-            </p>
+      {/* ============================== 2. SINGLE-DAY SHORT LEAVES (collapsible) ============================== */}
+      <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-xs overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShortLeavesOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-3 p-5 text-left hover:bg-stone-50 dark:hover:bg-stone-800/30 transition"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 rounded-xl shrink-0">
+              <Users className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 truncate">
+                Single-Day Short Leaves — {leaveDate}
+              </h3>
+              <p className="text-xs text-stone-500">
+                {onLeaveAll.length > 0
+                  ? `${onLeaveAll.length} teacher${onLeaveAll.length === 1 ? '' : 's'} marked absent on this date`
+                  : 'No teachers marked absent on this date'}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
-              <tr>
-                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-36">Period</th>
-                {showWorkloadCol && (
-                  <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-48">
-                    Recommended (Workload)
-                  </th>
-                )}
-                {showGroupCol && (
-                  <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-52">
-                    By Group (1–4 Match)
-                  </th>
-                )}
-                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300">
-                  Free Staff (Available)
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
-              {substitutionRows.map(r => (
-                <tr key={r.period} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/30">
-                  <td className="py-3 px-3.5 font-bold">
-                    <div className="text-stone-900 dark:text-stone-100">Period {r.period}</div>
-                    {r.info && (
-                      <div className="text-[11px] text-stone-500 font-semibold mt-0.5">
-                        {r.info}
-                      </div>
-                    )}
-                  </td>
-                  {showWorkloadCol && (
-                    <td className="py-3 px-3.5">
-                      {r.isFree ? (
-                        <span className="text-stone-400 italic">Absent teacher free</span>
-                      ) : (
-                        <div className="font-bold text-emerald-800 dark:text-emerald-400">
-                          {r.bestWorkload}
-                        </div>
-                      )}
-                    </td>
-                  )}
-                  {showGroupCol && (
-                    <td className="py-3 px-3.5">
-                      {r.isFree ? (
-                        <span className="text-stone-400">—</span>
-                      ) : (
-                        <div className="space-y-1">
-                          {r.groupMatches.map((m, mi) => (
-                            <div key={m.teacher} className="text-[11px] leading-tight">
-                              <span className="font-bold text-stone-900 dark:text-stone-100">
-                                {mi + 1}. {m.teacher}
-                              </span>
-                              <span className="text-stone-400 ml-1">
-                                ({[m.info.rank, m.info.qual].filter(Boolean).join(" ") || "No group"})
-                              </span>
-                            </div>
-                          ))}
-                          {r.groupMatches.length === 0 && <span className="text-stone-400">—</span>}
-                        </div>
-                      )}
-                    </td>
-                  )}
-                  <td className="py-3 px-3.5">
-                    {r.isFree ? (
-                      <span className="text-stone-400">—</span>
-                    ) : (
-                      <div className="text-[11px] text-stone-600 dark:text-stone-400 leading-normal">
-                        {r.freeTeachers.join(", ") || "No teachers available"}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+              onLeaveAll.length > 0
+                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
+            }`}>
+              {onLeaveAll.length} selected
+            </span>
+            <ChevronDown
+              className={`w-4 h-4 text-stone-500 transition-transform ${shortLeavesOpen ? 'rotate-180' : ''}`}
+            />
+          </div>
+        </button>
+
+        {shortLeavesOpen && (
+          <div className="px-5 pb-5 border-t border-stone-200 dark:border-stone-800 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-stone-500">
+                Check teachers who are absent on this date. Teachers on long leave are locked.
+              </p>
+              {onLeaveAll.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirm('Clear all short leaves for this date?')) return;
+                    setLeavesForDate(leaveDate, []);
+                  }}
+                  className="text-xs font-bold text-rose-600 hover:underline shrink-0 ml-3"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {data.teachers.map(t => {
+                const isLong = longLeavesOnDate.some(ll => ll.teacher === t);
+                const isChecked = onLeaveAll.includes(t);
+
+                return (
+                  <label
+                    key={t}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
+                      isLong
+                        ? 'bg-stone-100 dark:bg-stone-800/80 border-stone-300 dark:border-stone-700 opacity-80 cursor-not-allowed'
+                        : isChecked
+                        ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+                        : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={isLong}
+                      onChange={(e) => handleToggleShortLeave(t, e.target.checked)}
+                      className="rounded text-emerald-800 focus:ring-emerald-700 shrink-0"
+                    />
+                    <span className="truncate">{t}</span>
+                    {isLong && <span className="text-[10px] text-stone-400 shrink-0">(Long)</span>}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Long-Term Leaves Management */}
+      {/* ============================== 3. LONG-TERM LEAVES ============================== */}
       <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 border border-stone-200 dark:border-stone-800 shadow-xs">
         <div className="flex items-center justify-between gap-2 mb-3">
           <div>
@@ -672,57 +684,95 @@ export const SubstituteView: React.FC = () => {
         )}
       </div>
 
-      {/* Short Leaves (Single Day) Checkboxes */}
-      <div className="bg-white dark:bg-stone-900 rounded-3xl p-5 border border-stone-200 dark:border-stone-800 shadow-xs">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100">
-            Single-Day Short Leaves on {leaveDate}
-          </h3>
-          {onLeaveAll.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirm('Clear all short leaves for this date?')) return;
-                setLeavesForDate(leaveDate, []);
-              }}
-              className="text-xs font-bold text-rose-600 hover:underline"
-            >
-              Clear all
-            </button>
-          )}
+      {/* ============================== 4. COVERAGE RECOMMENDATION ============================== */}
+      <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 overflow-hidden shadow-xs">
+        <div className="p-4 border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/30 flex items-center justify-between">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200">
+              Coverage Recommendation Table
+            </h3>
+            <p className="text-[11px] text-stone-500">
+              Matching workload and group (Science/Arts/IT) for {absentTeacher}
+            </p>
+          </div>
         </div>
-        <p className="text-xs text-stone-500 mb-3">
-          Check teachers who are absent today. Teachers on long leave are locked.
-        </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-          {data.teachers.map(t => {
-            const isLong = longLeavesOnDate.some(ll => ll.teacher === t);
-            const isChecked = onLeaveAll.includes(t);
-
-            return (
-              <label
-                key={t}
-                className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs font-semibold cursor-pointer transition ${
-                  isLong
-                    ? 'bg-stone-100 dark:bg-stone-800/80 border-stone-300 dark:border-stone-700 opacity-80 cursor-not-allowed'
-                    : isChecked
-                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
-                    : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-50'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  disabled={isLong}
-                  onChange={(e) => handleToggleShortLeave(t, e.target.checked)}
-                  className="rounded text-emerald-800 focus:ring-emerald-700 shrink-0"
-                />
-                <span className="truncate">{t}</span>
-                {isLong && <span className="text-[10px] text-stone-400 shrink-0">(Long)</span>}
-              </label>
-            );
-          })}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
+              <tr>
+                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-36">Period</th>
+                {showWorkloadCol && (
+                  <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-48">
+                    Recommended (Workload)
+                  </th>
+                )}
+                {showGroupCol && (
+                  <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-52">
+                    By Group (1–4 Match)
+                  </th>
+                )}
+                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300">
+                  Free Staff (Available)
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
+              {substitutionRows.map(r => (
+                <tr key={r.period} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/30">
+                  <td className="py-3 px-3.5 font-bold">
+                    <div className="text-stone-900 dark:text-stone-100">Period {r.period}</div>
+                    {r.info && (
+                      <div className="text-[11px] text-stone-500 font-semibold mt-0.5">
+                        {r.info}
+                      </div>
+                    )}
+                  </td>
+                  {showWorkloadCol && (
+                    <td className="py-3 px-3.5">
+                      {r.isFree ? (
+                        <span className="text-stone-400 italic">Absent teacher free</span>
+                      ) : (
+                        <div className="font-bold text-emerald-800 dark:text-emerald-400">
+                          {r.bestWorkload}
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showGroupCol && (
+                    <td className="py-3 px-3.5">
+                      {r.isFree ? (
+                        <span className="text-stone-400">—</span>
+                      ) : (
+                        <div className="space-y-1">
+                          {r.groupMatches.map((m, mi) => (
+                            <div key={m.teacher} className="text-[11px] leading-tight">
+                              <span className="font-bold text-stone-900 dark:text-stone-100">
+                                {mi + 1}. {m.teacher}
+                              </span>
+                              <span className="text-stone-400 ml-1">
+                                ({[m.info.rank, m.info.qual].filter(Boolean).join(" ") || "No group"})
+                              </span>
+                            </div>
+                          ))}
+                          {r.groupMatches.length === 0 && <span className="text-stone-400">—</span>}
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  <td className="py-3 px-3.5">
+                    {r.isFree ? (
+                      <span className="text-stone-400">—</span>
+                    ) : (
+                      <div className="text-[11px] text-stone-600 dark:text-stone-400 leading-normal">
+                        {r.freeTeachers.join(", ") || "No teachers available"}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
