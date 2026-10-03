@@ -49,6 +49,10 @@ export const SubstituteView: React.FC = () => {
   const otherLeaves = useMemo(() => onLeaveAll.filter(t => t !== absentTeacher), [onLeaveAll, absentTeacher]);
   const longLeavesOnDate = useMemo(() => getLongLeavesForDate(leaveDate), [getLongLeavesForDate, leaveDate]);
 
+  // Column visibility flags
+  const showWorkloadCol = data.substituteRecommendWorkload !== false;
+  const showGroupCol = data.substituteRecommendGroup !== false;
+
   // Day of week index for leaveDate
   const dayIdx = useMemo(() => {
     try {
@@ -177,10 +181,11 @@ export const SubstituteView: React.FC = () => {
     if (!llTeacher || !llFrom) {
       alert("Please select teacher and from date.");
       return;
-    }    if (llTo && llFrom > llTo) {
-           alert("From date must be before To date.");
-           return;
-         }
+    }
+    if (llTo && llFrom > llTo) {
+      alert("From date must be before To date.");
+      return;
+    }
 
     updateData(prev => {
       let nextLong = [...(prev.longLeaves || [])];
@@ -222,23 +227,30 @@ export const SubstituteView: React.FC = () => {
   };
 
   const handlePrintSubstitute = () => {
-    const rowsHtml = substitutionRows.map(r => `
-      <tr>
-        <th style="padding: 6px; border: 1px solid #000; text-align: center;">
+    // Header cells conditionally rendered to match on-screen table
+    const headerCells = [
+      `<th style="width: 20%; padding: 6px; border: 1px solid #000;">Period &amp; Assignment</th>`
+    ];
+    if (showWorkloadCol) headerCells.push(`<th style="width: 25%; padding: 6px; border: 1px solid #000;">Workload Recommended</th>`);
+    if (showGroupCol) headerCells.push(`<th style="width: 25%; padding: 6px; border: 1px solid #000;">By Group (1–4)</th>`);
+    headerCells.push(`<th style="padding: 6px; border: 1px solid #000;">Available Teachers</th>`);
+
+    const rowsHtml = substitutionRows.map(r => {
+      const tds = [
+        `<th style="padding: 6px; border: 1px solid #000; text-align: center;">
           <div>Period ${r.period}</div>
           <div style="font-size: 11px; font-weight: normal;">${r.info || "—"}</div>
-        </th>
-        <td style="padding: 6px; border: 1px solid #000; text-align: center; font-weight: bold;">
-          ${r.bestWorkload}
-        </td>
-        <td style="padding: 6px; border: 1px solid #000; font-size: 11px;">
-          ${r.groupMatches.map(m => `<div><b>${m.teacher}</b> (${[m.info.rank, m.info.qual].filter(Boolean).join(" ")})</div>`).join("") || "—"}
-        </td>
-        <td style="padding: 6px; border: 1px solid #000; font-size: 11px;">
-          ${r.freeTeachers.join(", ") || "—"}
-        </td>
-      </tr>
-    `).join("");
+        </th>`
+      ];
+      if (showWorkloadCol) {
+        tds.push(`<td style="padding: 6px; border: 1px solid #000; text-align: center; font-weight: bold;">${r.bestWorkload}</td>`);
+      }
+      if (showGroupCol) {
+        tds.push(`<td style="padding: 6px; border: 1px solid #000; font-size: 11px;">${r.groupMatches.map(m => `<div><b>${m.teacher}</b> (${[m.info.rank, m.info.qual].filter(Boolean).join(" ")})</div>`).join("") || "—"}</td>`);
+      }
+      tds.push(`<td style="padding: 6px; border: 1px solid #000; font-size: 11px;">${r.freeTeachers.join(", ") || "—"}</td>`);
+      return `<tr>${tds.join("")}</tr>`;
+    }).join("");
 
     const content = `
       <div class="print-sheet" style="font-family: sans-serif; padding: 10mm;">
@@ -254,10 +266,7 @@ export const SubstituteView: React.FC = () => {
         <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
           <thead>
             <tr style="background: #e5e7eb;">
-              <th style="width: 20%; padding: 6px; border: 1px solid #000;">Period &amp; Assignment</th>
-              <th style="width: 25%; padding: 6px; border: 1px solid #000;">Workload Recommended</th>
-              <th style="width: 25%; padding: 6px; border: 1px solid #000;">By Group (1–3)</th>
-              <th style="width: 30%; padding: 6px; border: 1px solid #000;">Available Teachers</th>
+              ${headerCells.join("")}
             </tr>
           </thead>
           <tbody>
@@ -270,7 +279,7 @@ export const SubstituteView: React.FC = () => {
     triggerPrint(content, { orientation: 'landscape', printSize: 'm' });
   };
 
-  // --- NEW: export substitute board as PNG image ---
+  // --- export substitute board as PNG image ---
   const handleExportImage = async (share: boolean) => {
     if (!absentTeacher) {
       alert("Please select an absent teacher first.");
@@ -392,14 +401,14 @@ export const SubstituteView: React.FC = () => {
         <div className="mt-4 space-y-2 border-t border-stone-200 dark:border-stone-800 pt-4">
           <label className="flex items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
             <input type="checkbox"
-              checked={data.substituteRecommendWorkload}
+              checked={data.substituteRecommendWorkload !== false}
               onChange={(e) => updateData(prev => ({ ...prev, substituteRecommendWorkload: e.target.checked }))}
               className="rounded text-emerald-800 focus:ring-emerald-700" />
             <span>Recommend by workload (lowest total load first)</span>
           </label>
           <label className="flex items-center gap-2 text-xs font-semibold text-stone-700 dark:text-stone-300 cursor-pointer">
             <input type="checkbox"
-              checked={data.substituteRecommendGroup}
+              checked={data.substituteRecommendGroup !== false}
               onChange={(e) => updateData(prev => ({ ...prev, substituteRecommendGroup: e.target.checked }))}
               className="rounded text-emerald-800 focus:ring-emerald-700" />
             <span>Recommend by group &amp; grade match</span>
@@ -419,7 +428,7 @@ export const SubstituteView: React.FC = () => {
         )}
       </div>
 
-      {/* 4-Column Substitution Table */}
+      {/* Dynamic-column Substitution Table */}
       <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 overflow-hidden shadow-xs">
         <div className="p-4 border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-800/30 flex items-center justify-between">
           <div>
@@ -437,9 +446,19 @@ export const SubstituteView: React.FC = () => {
             <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
               <tr>
                 <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-36">Period</th>
-                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-48">Recommended (Workload)</th>
-                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-52">By Group (1–4 Match)</th>
-                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300">Free Staff (Available)</th>
+                {showWorkloadCol && (
+                  <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-48">
+                    Recommended (Workload)
+                  </th>
+                )}
+                {showGroupCol && (
+                  <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300 w-52">
+                    By Group (1–4 Match)
+                  </th>
+                )}
+                <th className="py-3 px-3.5 font-bold text-stone-700 dark:text-stone-300">
+                  Free Staff (Available)
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
@@ -453,34 +472,38 @@ export const SubstituteView: React.FC = () => {
                       </div>
                     )}
                   </td>
-                  <td className="py-3 px-3.5">
-                    {r.isFree ? (
-                      <span className="text-stone-400 italic">Absent teacher free</span>
-                    ) : (
-                      <div className="font-bold text-emerald-800 dark:text-emerald-400">
-                        {r.bestWorkload}
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-3 px-3.5">
-                    {r.isFree ? (
-                      <span className="text-stone-400">—</span>
-                    ) : (
-                      <div className="space-y-1">
-                        {r.groupMatches.map((m, mi) => (
-                          <div key={m.teacher} className="text-[11px] leading-tight">
-                            <span className="font-bold text-stone-900 dark:text-stone-100">
-                              {mi + 1}. {m.teacher}
-                            </span>
-                            <span className="text-stone-400 ml-1">
-                              ({[m.info.rank, m.info.qual].filter(Boolean).join(" ") || "No group"})
-                            </span>
-                          </div>
-                        ))}
-                        {r.groupMatches.length === 0 && <span className="text-stone-400">—</span>}
-                      </div>
-                    )}
-                  </td>
+                  {showWorkloadCol && (
+                    <td className="py-3 px-3.5">
+                      {r.isFree ? (
+                        <span className="text-stone-400 italic">Absent teacher free</span>
+                      ) : (
+                        <div className="font-bold text-emerald-800 dark:text-emerald-400">
+                          {r.bestWorkload}
+                        </div>
+                      )}
+                    </td>
+                  )}
+                  {showGroupCol && (
+                    <td className="py-3 px-3.5">
+                      {r.isFree ? (
+                        <span className="text-stone-400">—</span>
+                      ) : (
+                        <div className="space-y-1">
+                          {r.groupMatches.map((m, mi) => (
+                            <div key={m.teacher} className="text-[11px] leading-tight">
+                              <span className="font-bold text-stone-900 dark:text-stone-100">
+                                {mi + 1}. {m.teacher}
+                              </span>
+                              <span className="text-stone-400 ml-1">
+                                ({[m.info.rank, m.info.qual].filter(Boolean).join(" ") || "No group"})
+                              </span>
+                            </div>
+                          ))}
+                          {r.groupMatches.length === 0 && <span className="text-stone-400">—</span>}
+                        </div>
+                      )}
+                    </td>
+                  )}
                   <td className="py-3 px-3.5">
                     {r.isFree ? (
                       <span className="text-stone-400">—</span>
