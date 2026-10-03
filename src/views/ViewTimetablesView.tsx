@@ -87,6 +87,118 @@ export const ViewTimetablesView: React.FC = () => {
     { id: 'teacher' as const, label: '5. Teacher Wise', icon: UserCheck },
   ];
 
+  /* ---------------------------------------------------------------
+     Timings helpers — shared between non-fullscreen and fullscreen.
+     Handles merge mode (Friday inline with a divider) and separate
+     mode (second table below the main one) based on fridayTimings.enabled.
+     --------------------------------------------------------------- */
+  const buildTimingsMeta = () => {
+    const ft = data.fridayTimings;
+    const fridayHasAnyData = !!(
+      ft &&
+      ((ft.assemblyTime?.start || ft.assemblyTime?.end) ||
+        (Array.isArray(ft.periodTimes) && ft.periodTimes.some(pt => pt && (pt.start || pt.end))))
+    );
+    return {
+      ft,
+      fridayHasAnyData,
+      mergeMode: fridayHasAnyData && !ft.enabled,
+      separateMode: fridayHasAnyData && !!ft.enabled,
+      fridayDayName: ft ? (DAY_NAMES[ft.dayIndex]?.toUpperCase() || "FRIDAY") : "FRIDAY"
+    };
+  };
+
+  const weekdayTimingsRows = (
+    <>
+      {data.assemblyTime && (data.assemblyTime.start || data.assemblyTime.end) && (
+        <tr className="bg-stone-50/50 dark:bg-stone-800/40">
+          <td className="py-2.5 px-4 font-bold">Assembly</td>
+          <td className="py-2.5 px-4">
+            {data.assemblyTime.start || "—"} - {data.assemblyTime.end || "—"}
+          </td>
+          <td className="py-2.5 px-4 font-semibold text-emerald-800 dark:text-emerald-400">
+            {calculateDuration(data.assemblyTime.start, data.assemblyTime.end)}
+          </td>
+        </tr>
+      )}
+      {data.periods.map((p, i) => (
+        <React.Fragment key={p}>
+          <tr>
+            <td className="py-2.5 px-4 font-bold">{p}</td>
+            <td className="py-2.5 px-4">
+              {data.periodTimes[i]?.start || "—"} - {data.periodTimes[i]?.end || "—"}
+            </td>
+            <td className="py-2.5 px-4 font-semibold text-emerald-800 dark:text-emerald-400">
+              {calculateDuration(data.periodTimes[i]?.start || "", data.periodTimes[i]?.end || "")}
+            </td>
+          </tr>
+          {data.breakAfter === p && i < data.periods.length - 1 && (
+            <tr className="bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 font-bold">
+              <td className="py-2 px-4">BREAK</td>
+              <td className="py-2 px-4">
+                {data.periodTimes[i]?.end || "—"} - {data.periodTimes[i + 1]?.start || "—"}
+              </td>
+              <td className="py-2 px-4">
+                {calculateDuration(
+                  data.periodTimes[i]?.end || "",
+                  data.periodTimes[i + 1]?.start || ""
+                )}
+              </td>
+            </tr>
+          )}
+        </React.Fragment>
+      ))}
+    </>
+  );
+
+  const buildFridayTimingsRows = () => {
+    const ft = data.fridayTimings;
+    if (!ft) return null;
+    return (
+      <>
+        {ft.assemblyTime && (ft.assemblyTime.start || ft.assemblyTime.end) && (
+          <tr className="bg-stone-50/50 dark:bg-stone-800/40">
+            <td className="py-2 px-4 font-bold">Assembly</td>
+            <td className="py-2 px-4">
+              {ft.assemblyTime.start || "—"} - {ft.assemblyTime.end || "—"}
+            </td>
+            <td className="py-2 px-4 font-semibold text-emerald-800 dark:text-emerald-400">
+              {calculateDuration(ft.assemblyTime.start || "", ft.assemblyTime.end || "")}
+            </td>
+          </tr>
+        )}
+        {data.periods.map((p, i) => {
+          const pt = ft.periodTimes?.[i];
+          if (!pt || (!pt.start && !pt.end)) return null;
+          return (
+            <React.Fragment key={p}>
+              <tr>
+                <td className="py-2 px-4 font-bold">{p}</td>
+                <td className="py-2 px-4">{pt.start || "—"} - {pt.end || "—"}</td>
+                <td className="py-2 px-4 font-semibold text-emerald-800 dark:text-emerald-400">
+                  {calculateDuration(pt.start || "", pt.end || "")}
+                </td>
+              </tr>
+              {ft.breakAfter === p && i < data.periods.length - 1 && (
+                <tr className="bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 font-bold">
+                  <td className="py-2 px-4">{ft.breakLabel || "BREAK"}</td>
+                  <td className="py-2 px-4">
+                    {pt.end || "—"} - {ft.periodTimes?.[i + 1]?.start || "—"}
+                  </td>
+                  <td className="py-2 px-4">
+                    {calculateDuration(pt.end || "", ft.periodTimes?.[i + 1]?.start || "")}
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </>
+    );
+  };
+
+  const timingsMeta = buildTimingsMeta();
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
@@ -295,6 +407,7 @@ export const ViewTimetablesView: React.FC = () => {
 
         {activeSection === 'timings' && (
           <div className="max-w-2xl mx-auto space-y-6">
+            {/* Main table — includes FRIDAY inline if merge mode */}
             <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-800">
               <table className="w-full text-center text-xs">
                 <thead className="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-800">
@@ -305,95 +418,30 @@ export const ViewTimetablesView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
-                  {data.assemblyTime && (data.assemblyTime.start || data.assemblyTime.end) && (
-                    <tr className="bg-stone-50/50 dark:bg-stone-800/40">
-                      <td className="py-2.5 px-4 font-bold">Assembly</td>
-                      <td className="py-2.5 px-4">
-                        {data.assemblyTime.start || "—"} - {data.assemblyTime.end || "—"}
-                      </td>
-                      <td className="py-2.5 px-4 font-semibold text-emerald-800 dark:text-emerald-400">
-                        {calculateDuration(data.assemblyTime.start, data.assemblyTime.end)}
-                      </td>
-                    </tr>
-                  )}
-                  {data.periods.map((p, i) => (
-                    <React.Fragment key={p}>
-                      <tr>
-                        <td className="py-2.5 px-4 font-bold">{p}</td>
-                        <td className="py-2.5 px-4">
-                          {data.periodTimes[i]?.start || "—"} - {data.periodTimes[i]?.end || "—"}
-                        </td>
-                        <td className="py-2.5 px-4 font-semibold text-emerald-800 dark:text-emerald-400">
-                          {calculateDuration(data.periodTimes[i]?.start || "", data.periodTimes[i]?.end || "")}
+                  {weekdayTimingsRows}
+                  {timingsMeta.mergeMode && timingsMeta.ft && (
+                    <>
+                      <tr className="bg-stone-200 dark:bg-stone-700 font-bold text-stone-900 dark:text-stone-100">
+                        <td colSpan={3} className="py-2 px-4 uppercase tracking-wider text-center">
+                          {timingsMeta.fridayDayName}{timingsMeta.ft.note ? ` — ${timingsMeta.ft.note}` : ''}
                         </td>
                       </tr>
-                      {data.breakAfter === p && i < data.periods.length - 1 && (
-                        <tr className="bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 font-bold">
-                          <td className="py-2 px-4">BREAK</td>
-                          <td className="py-2 px-4">
-                            {data.periodTimes[i]?.end || "—"} - {data.periodTimes[i + 1]?.start || "—"}
-                          </td>
-                          <td className="py-2 px-4">
-                            {calculateDuration(
-                              data.periodTimes[i]?.end || "",
-                              data.periodTimes[i + 1]?.start || ""
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
+                      {buildFridayTimingsRows()}
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
 
-            {data.fridayTimings?.enabled && (
+            {/* Separate Friday table when enabled */}
+            {timingsMeta.separateMode && timingsMeta.ft && (
               <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-800">
                 <div className="p-3 bg-emerald-100 dark:bg-emerald-950/80 font-bold text-xs text-emerald-900 dark:text-emerald-200 text-center">
-                  {DAY_NAMES[data.fridayTimings.dayIndex]?.toUpperCase() || "FRIDAY"} TIMINGS {data.fridayTimings.note ? `(${data.fridayTimings.note})` : ''}
+                  {timingsMeta.fridayDayName} TIMINGS {timingsMeta.ft.note ? `(${timingsMeta.ft.note})` : ''}
                 </div>
                 <table className="w-full text-center text-xs">
                   <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60">
-                    {data.assemblyTime && (data.fridayTimings.assemblyTime?.start || data.fridayTimings.assemblyTime?.end) && (
-                      <tr className="bg-stone-50/50 dark:bg-stone-800/40">
-                        <td className="py-2 px-4 font-bold w-1/4">Assembly</td>
-                        <td className="py-2 px-4 w-1/2">
-                          {data.fridayTimings.assemblyTime.start || "—"} - {data.fridayTimings.assemblyTime.end || "—"}
-                        </td>
-                        <td className="py-2 px-4 w-1/4 font-semibold text-emerald-800 dark:text-emerald-400">
-                          {calculateDuration(
-                            data.fridayTimings.assemblyTime?.start || "",
-                            data.fridayTimings.assemblyTime?.end || ""
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                    {data.periods.map((p, i) => {
-                      const pt = data.fridayTimings.periodTimes[i];
-                      if (!pt || (!pt.start && !pt.end)) return null;
-                      return (
-                        <React.Fragment key={p}>
-                          <tr>
-                            <td className="py-2 px-4 font-bold w-1/4">Period {p}</td>
-                            <td className="py-2 px-4 w-1/2">{pt.start || "—"} - {pt.end || "—"}</td>
-                            <td className="py-2 px-4 w-1/4 font-semibold text-emerald-800 dark:text-emerald-400">
-                              {calculateDuration(pt.start || "", pt.end || "")}
-                            </td>
-                          </tr>
-                          {data.fridayTimings.breakAfter === p && i < data.periods.length - 1 && (
-                            <tr className="bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 font-bold">
-                              <td className="py-2 px-4">{data.fridayTimings.breakLabel || "BREAK"}</td>
-                              <td className="py-2 px-4">
-                                {pt.end || "—"} - {data.fridayTimings.periodTimes[i + 1]?.start || "—"}
-                              </td>
-                              <td className="py-2 px-4">
-                                {calculateDuration(pt.end || "", data.fridayTimings.periodTimes[i + 1]?.start || "")}
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
+                    {buildFridayTimingsRows()}
                   </tbody>
                 </table>
               </div>
@@ -430,9 +478,9 @@ export const ViewTimetablesView: React.FC = () => {
                           const sub2 = s2.subject || "—";
                           const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
                           let displaySub;
-                          if (!hasMask) displaySub = `${sub1}/${sub2}`;          // combined, every day
-                          else if (s2.days.includes(dayIdx)) displaySub = sub2;  // slot 2 on its days
-                          else displaySub = sub1;                                 // slot 1 otherwise
+                          if (!hasMask) displaySub = `${sub1}/${sub2}`;
+                          else if (s2.days.includes(dayIdx)) displaySub = sub2;
+                          else displaySub = sub1;
                           line = t ? `${displaySub} - ${t}` : displaySub;
                         } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
                           line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
@@ -555,34 +603,46 @@ export const ViewTimetablesView: React.FC = () => {
               </div>
             )}
 
-            {/* 3. School Timings */}
+            {/* 3. School Timings — now supports merge + separate */}
             {activeSection === 'timings' && (
               <div className="max-w-3xl mx-auto space-y-6">
-                <table className="w-full text-center text-sm border-collapse border border-stone-200 dark:border-stone-800">
-                  <thead className="bg-stone-100 dark:bg-stone-800">
-                    <tr>
-                      <th className="py-3 px-4 font-bold">PERIOD</th>
-                      <th className="py-3 px-4 font-bold">TIME SLOT</th>
-                      <th className="py-3 px-4 font-bold">DURATION</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
-                    {data.assemblyTime && (data.assemblyTime.start || data.assemblyTime.end) && (
+                <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-800">
+                  <table className="w-full text-center text-sm border-collapse">
+                    <thead className="bg-stone-100 dark:bg-stone-800">
                       <tr>
-                        <td className="py-3 px-4 font-bold">Assembly</td>
-                        <td className="py-3 px-4">{data.assemblyTime.start} - {data.assemblyTime.end}</td>
-                        <td className="py-3 px-4">{calculateDuration(data.assemblyTime.start, data.assemblyTime.end)}</td>
+                        <th className="py-3 px-4 font-bold">PERIOD</th>
+                        <th className="py-3 px-4 font-bold">TIME SLOT</th>
+                        <th className="py-3 px-4 font-bold">DURATION</th>
                       </tr>
-                    )}
-                    {data.periods.map((p, i) => (
-                      <tr key={p}>
-                        <td className="py-3 px-4 font-bold">{p}</td>
-                        <td className="py-3 px-4">{data.periodTimes[i]?.start || "—"} - {data.periodTimes[i]?.end || "—"}</td>
-                        <td className="py-3 px-4">{calculateDuration(data.periodTimes[i]?.start || "", data.periodTimes[i]?.end || "")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
+                      {weekdayTimingsRows}
+                      {timingsMeta.mergeMode && timingsMeta.ft && (
+                        <>
+                          <tr className="bg-stone-200 dark:bg-stone-700 font-bold text-stone-900 dark:text-stone-100">
+                            <td colSpan={3} className="py-2.5 px-4 uppercase tracking-wider text-center">
+                              {timingsMeta.fridayDayName}{timingsMeta.ft.note ? ` — ${timingsMeta.ft.note}` : ''}
+                            </td>
+                          </tr>
+                          {buildFridayTimingsRows()}
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {timingsMeta.separateMode && timingsMeta.ft && (
+                  <div className="overflow-hidden rounded-2xl border border-stone-200 dark:border-stone-800">
+                    <div className="p-3 bg-emerald-100 dark:bg-emerald-950/80 font-bold text-sm text-emerald-900 dark:text-emerald-200 text-center">
+                      {timingsMeta.fridayDayName} TIMINGS {timingsMeta.ft.note ? `(${timingsMeta.ft.note})` : ''}
+                    </div>
+                    <table className="w-full text-center text-sm border-collapse">
+                      <tbody className="divide-y divide-stone-200 dark:divide-stone-800">
+                        {buildFridayTimingsRows()}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
@@ -607,20 +667,20 @@ export const ViewTimetablesView: React.FC = () => {
                           const t1 = currentClass[4][pi];
                           const sub1 = currentClass[3][pi] || "—";
                           let line = t1 ? `${sub1} - ${t1}` : sub1;
-                         if (s2 && (s2.subject || s2.teacher)) {
-                           if (s2.mode === 'same') {
-                             const t = t1 || s2.teacher;
-                             const sub2 = s2.subject || "—";
-                             const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
-                             let displaySub;
-                             if (!hasMask) displaySub = `${sub1}/${sub2}`;          // combined, every day
-                             else if (s2.days.includes(dayIdx)) displaySub = sub2;  // slot 2 on its days
-                             else displaySub = sub1;                                 // slot 1 otherwise
-                             line = t ? `${displaySub} - ${t}` : displaySub;
-                           } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
-                             line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
-                           }
-                         }
+                          if (s2 && (s2.subject || s2.teacher)) {
+                            if (s2.mode === 'same') {
+                              const t = t1 || s2.teacher;
+                              const sub2 = s2.subject || "—";
+                              const hasMask = Array.isArray(s2.days) && s2.days.length > 0;
+                              let displaySub;
+                              if (!hasMask) displaySub = `${sub1}/${sub2}`;
+                              else if (s2.days.includes(dayIdx)) displaySub = sub2;
+                              else displaySub = sub1;
+                              line = t ? `${displaySub} - ${t}` : displaySub;
+                            } else if (s2.mode === 'parallel' || s2.days.includes(dayIdx)) {
+                              line = `${sub1}${t1 ? " - " + t1 : ""} / ${s2.subject || ""}${s2.teacher ? " - " + s2.teacher : ""}`;
+                            }
+                          }
                           return <td key={pi} className="py-3 px-2 text-center">{line}</td>;
                         })}
                       </tr>
