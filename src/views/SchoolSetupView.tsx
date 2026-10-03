@@ -616,9 +616,13 @@ export const SchoolSetupView: React.FC<SchoolSetupViewProps> = ({ onNavigate }) 
   };
 
   const handleShareBackup = async () => {
-    try {
-      const { blob, fileName } = buildBackupBlob();
-      const file = new File([blob], fileName, { type: "application/json" });
+  try {
+    const { blob, fileName } = buildBackupBlob();
+
+    // Use text/plain so Android's share sheet accepts it more reliably.
+    // Content is still JSON — import reads it as text and parses.
+    const txtName = fileName.replace(/\.json$/i, '.txt');
+    const file = new File([blob], txtName, { type: "text/plain" });
 
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
