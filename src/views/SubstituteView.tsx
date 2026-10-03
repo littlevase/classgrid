@@ -31,9 +31,48 @@ export const SubstituteView: React.FC = () => {
     teacherPeriodSummary
   } = useTimetable();
 
-  const [leaveDate, setLeaveDate] = useState<string>(
-    data.leaveDate || dateKey()
-  );
+  /* ---------- date helpers ---------- */
+  // Returns the day-of-week index (0 = first school day, ... , -1 = weekend / outside school week)
+  const getDayIdxForDate = (key: string): number => {
+    if (!key) return -1;
+    try {
+      const [y, m, d] = key.split("-").map(Number);
+      const dow = new Date(y, m - 1, d).getDay(); // 0=Sun,1=Mon,...,6=Sat
+      const map: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
+      const idx = map[dow];
+      return idx >= 0 && idx < data.daysPerWeek ? idx : -1;
+    } catch {
+      return -1;
+    }
+  };
+
+  const isValidSchoolDay = (key: string): boolean => getDayIdxForDate(key) >= 0;
+
+  // Walk forward from a date until we hit a valid school day (max 14 steps to be safe).
+  const nextSchoolDayFrom = (startKey: string): string => {
+    try {
+      const [y, m, d] = startKey.split("-").map(Number);
+      const cur = new Date(y, m - 1, d);
+      for (let i = 0; i < 14; i++) {
+        const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+        if (isValidSchoolDay(key)) return key;
+        cur.setDate(cur.getDate() + 1);
+      }
+    } catch {
+      // fall through
+    }
+    return startKey;
+  };
+
+  const [leaveDate, setLeaveDate] = useState<string>(() => {
+    const stored = data.leaveDate || "";
+    if (isValidSchoolDay(stored)) return stored;
+    // If the stored date is stale or a weekend, snap to the next school day from today
+    const today = dateKey();
+    const todayIsSchoolDay = isValidSchoolDay(today);
+    return todayIsSchoolDay ? today : nextSchoolDayFrom(today);
+  });
+
   const [absentTeacher, setAbsentTeacher] = useState<string>(
     localStorage.getItem("utAbsentTeacher") || data.teachers[0] || ""
   );
@@ -42,13 +81,20 @@ export const SubstituteView: React.FC = () => {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [shortLeavesOpen, setShortLeavesOpen] = useState<boolean>(false);
 
-  // --- Auto-reset to today on mount if the stored date is empty or in the past ---
+  // --- On mount: if the stored date is stale/weekend, snap to the next school day ---
   useEffect(() => {
     const today = dateKey();
     const stored = data.leaveDate || "";
-    if (!stored || stored < today) {
-      setLeaveDate(today);
-      updateData(prev => ({ ...prev, leaveDate: today }), true);
+    const todayIsSchoolDay = isValidSchoolDay(today);
+    const target = todayIsSchoolDay ? today : nextSchoolDayFrom(today);
+
+    // Only overwrite if the stored date is empty, in the past, or a non-school day.
+    const storedIsValidFutureOrTodaySchoolDay =
+      stored && stored >= today && isValidSchoolDay(stored);
+
+    if (!storedIsValidFutureOrTodaySchoolDay) {
+      setLeaveDate(target);
+      updateData(prev => ({ ...prev, leaveDate: target }), true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -68,19 +114,9 @@ export const SubstituteView: React.FC = () => {
   const showGroupCol = data.substituteRecommendGroup !== false;
 
   // Day of week index for leaveDate
-  const dayIdx = useMemo(() => {
-    try {
-      const [y, m, d] = leaveDate.split("-").map(Number);
-      const dt = new Date(y, m - 1, d);
-      const dow = dt.getDay();
-      const map: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 0: 6 };
-      return map[dow] ?? -1;
-    } catch {
-      return -1;
-    }
-  }, [leaveDate]);
+  const dayIdx = useMemo(() => getDayIdxForDate(leaveDate), [leaveDate, data.daysPerWeek]);
 
-  const isDayInWeek = dayIdx >= 0 && dayIdx < data.daysPerWeek;
+  const isDayInWeek = dayIdx >= 0;
 
   // Grade/group comparison function
   const compareQualRank = (abs: string, cand: string) => {
@@ -437,7 +473,7 @@ export const SubstituteView: React.FC = () => {
 
         {!isDayInWeek && (
           <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-medium">
-            This date falls on a weekend or non-instructional day ({DAY_NAMES[dayIdx] || "Outside calendar"}).
+            This date falls outside the school week. Showing an empty schedule.
           </div>
         )}
       </div>
